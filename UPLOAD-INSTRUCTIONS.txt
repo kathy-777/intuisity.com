@@ -1,0 +1,75 @@
+Intuisity pending update
+
+Upload/commit these files to GitHub in the same folder locations:
+
+- App.tsx
+- package.json
+- supabase-schema.sql
+- api/_supabase-report.js
+- api/birth-location.js
+- api/public-config.js
+- api/admin/report.js
+- api/admin/user-insights.csv.js
+- api/analytics/module-time.js
+- legal/privacy.html
+- legal/terms.html
+- scripts/copy-legal-pages.js
+- src/components/DailyChallengeHub.tsx
+- src/data/astrologyTips.ts
+- src/data/dailyLessons.ts
+- src/data/mockData.ts
+- src/services/adminAnalytics.ts
+- src/services/backendApi.ts
+- src/types/circularNatalHoroscope.d.ts
+- src/types/userProfile.ts
+- tests/dailyLessons.test.js
+
+Optional helper copies, only for easier copy/paste if GitHub has trouble with .tsx:
+
+- App.txt
+- DailyChallengeHub.txt
+
+After Vercel deploys, run this in Supabase SQL editor if you have not already:
+
+alter table analytics_events add column if not exists active_duration_ms integer default 0;
+
+Google app setup links after Vercel deploys:
+
+- Privacy Policy URL: https://www.intuisity.com/privacy.html
+- Terms of Service URL: https://www.intuisity.com/terms.html
+
+Changes included:
+
+- Added a public Privacy Policy page for Google sign-in and website visitors.
+- Added a public Terms of Service page for the Intuisity app.
+- Added Privacy Policy and Terms of Service links to the login, reset password, and sign-up screens.
+- Updated the website build so Vercel publishes privacy.html and terms.html.
+- Google sign-in now has a runtime public-config fallback so EXPO_PUBLIC_GOOGLE_CLIENT_ID can be read from the live Vercel deployment.
+- Admin reports show active time separately from page time.
+- Admin/test emails are excluded from reporting totals.
+- Admin reports include unique visitors, visitor volume, date range, and visitor trend chart/table.
+- Admin reports include a Time by Module graph with 1 day, 7 day, 14 day, and 30 day views.
+- User Insights opens as its own admin report page.
+- Treasure Chest starts with Play a friend or Play computer.
+- Treasure Chest friend flow requires email, makes phone optional, and sends after submitting tiles.
+- Treasure Chest mobile play area now allows vertical scrolling so later tries can be reached.
+- Treasure Chest tile dragging is smoother on mobile and missed drops place in the next open slot.
+- Treasure Chest has 300 rotating win messages.
+- Read the Person locks the first score for the day while still allowing practice plays.
+- Train Your Knowing uses 300 revolving reward pictures.
+- Train Your Knowing instructions now clearly explain the picture is hidden beneath one colored square.
+- Astrology birth time uses compact rolling selector and improved saved-details copy.
+- Astrology birth time picker is now smaller, rounded, and centered instead of full-width.
+- Astrology birth time now has visible scrolling number columns for Hour, Minute, and AM/PM.
+- Astrology form buttons work while the mobile keyboard is open and show clearer birthdate feedback.
+- Astrology no longer shows warning-like wording when birth details are saved but the city is not in the full-chart city list.
+- Astrology now has a much larger built-in birth city list for full-chart calculations.
+- Astrology now looks up unknown birth cities through api/birth-location.js and saves the resolved latitude/longitude to that user's profile.
+- Astrology daily synopsis now reads more like a polished daily horoscope with sign/date range, day tone, and practical guidance.
+- Astrology now gives useful guidance from whatever birth details are available, even if only birthdate is saved, with a gentle reminder to add birth time/place for the most reliable guidance.
+- Astrology daily synopsis no longer includes wording about saved birth details, birthdate, or missing birth time/place inside the positive/average day advice.
+- Challenge 3 now shows two gentle daily positivity ideas to pick from.
+- Challenge 3 now has a pool of 600 daily ideas.
+- Challenge 3 shows two ideas per day and moves through the pool before starting over.
+- Challenge 3 ideas are simpler intuition-friendly actions like guessing who will call, inviting someone to lunch, or writing stream-of-consciousness notes.
+- Challenge 3 no longer frames tasks around who was good to the user in the past.

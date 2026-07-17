@@ -1,0 +1,35 @@
+{
+  "name": "intuisity-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "web": "expo start --web",
+    "web:offline": "scripts\\start-web-offline.cmd",
+    "backend": "node backend/server.js",
+    "build:web": "expo export --platform web && node scripts/copy-legal-pages.js",
+    "test": "node tests/scoring.test.js && node tests/astrology.test.js && node tests/dailyLessons.test.js"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~4.0.1",
+    "@expo/vector-icons": "~14.0.4",
+    "circular-natal-horoscope-js": "^1.1.0",
+    "expo": "~52.0.0",
+    "expo-asset": "~11.0.5",
+    "expo-font": "~13.0.4",
+    "expo-linear-gradient": "~14.0.2",
+    "expo-status-bar": "~2.0.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-native": "0.76.9",
+    "react-native-web": "~0.19.13"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~18.3.12",
+    "typescript": "^5.3.3"
+  }
+}
