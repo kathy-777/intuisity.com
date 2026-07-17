@@ -256,7 +256,7 @@ const knowingRewardImages: PictureItem[] = knowingRewardThemes.flatMap((theme, t
       id: `knowing-${themeIndex}-${imageIndex}`,
       label: `${theme.label} ${imageIndex + 1}`,
       source: {
-        uri: `https://loremflickr.com/900/700/${theme.query}?lock=${12200 + number}`
+        uri: `https://picsum.photos/seed/intuisity-knowing-${number}/900/700`
       }
     };
   })
@@ -383,6 +383,21 @@ const challengeIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 const treasureChestIcons = ["💎", "👑", "🪙", "🔮", "💍", "🗝️", "📿", "🏺", "📜", "🦪", "🐚", "🎖️", "🏆", "🎁", "🧿"];
+const treasureBaseGamePieces = [
+  "💎", "👑", "🪙", "🔮", "💍", "🗝️", "📿", "🏺", "📜", "🦪",
+  "🐚", "🎖️", "🏆", "🎁", "🧿", "⭐", "🌙", "☀️", "⚡", "🔥",
+  "🌊", "🌈", "🪷", "🌻", "🌹", "🍀", "🍄", "🌵", "🌴", "🌲",
+  "🪨", "🕯️", "🧭", "🗺️", "⏳", "⌛", "🪞", "🔔", "🎵", "🎶",
+  "🎻", "🎨", "🖌️", "📚", "📖", "✒️", "🪶", "🔭", "📷", "🎞️",
+  "🧵", "🪡", "🧶", "🧺", "🪁", "🧸", "🪀", "🎲", "♟️", "🃏",
+  "🧩", "🎯", "🏹", "🛡️", "⚜️", "🔱", "⚖️", "🪬", "🕊️", "🦋",
+  "🐝", "🐞", "🐢", "🦉", "🦚"
+];
+const treasureGamePieceMarks = ["", "✦", "◇", "✧"];
+const treasureGamePieceCatalog = treasureBaseGamePieces.flatMap((piece) =>
+  treasureGamePieceMarks.map((mark) => `${piece}${mark}`)
+);
+
 const treasureWinOpeners = [
   "Fantastic",
   "Amazing",
@@ -1533,10 +1548,6 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
                 style={styles.birthdateInput}
                 value={birthDetails.birthdate}
               />
-              <BirthTimePicker
-                onChange={(birthTime) => updateBirthDetail("birthTime", birthTime)}
-                value={birthDetails.birthTime}
-              />
               <TextInput
                 accessibilityLabel="Birth city for astrology"
                 onChangeText={(birthCity) => updateBirthDetail("birthCity", birthCity)}
@@ -1560,6 +1571,10 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
                 placeholderTextColor="#9A93AA"
                 style={styles.birthdateInput}
                 value={birthDetails.birthCountry}
+              />
+              <BirthTimePicker
+                onChange={(birthTime) => updateBirthDetail("birthTime", birthTime)}
+                value={birthDetails.birthTime}
               />
               <Pressable
                 disabled={!birthdateReady}
@@ -3448,9 +3463,13 @@ function makeKnowingRewardPictures() {
     previousIds = [];
   }
 
-  const freshPictures = shuffle(knowingRewardImages.filter((picture) => !previousIds.includes(picture.id)));
-  const selectedPictures = (freshPictures.length >= 5 ? freshPictures : shuffle(knowingRewardImages)).slice(0, 5);
-  const updatedHistory = [...previousIds, ...selectedPictures.map((picture) => picture.id)].slice(-260);
+  let freshPictures = shuffle(knowingRewardImages.filter((picture) => !previousIds.includes(picture.id)));
+  if (freshPictures.length < 5) {
+    previousIds = [];
+    freshPictures = shuffle(knowingRewardImages);
+  }
+  const selectedPictures = freshPictures.slice(0, 5);
+  const updatedHistory = [...previousIds, ...selectedPictures.map((picture) => picture.id)].slice(-295);
 
   try {
     globalThis.localStorage?.setItem(historyKey, JSON.stringify(updatedHistory));
@@ -3777,7 +3796,38 @@ function makeDailyPowerWords() {
 }
 
 function makeTreasureChestIcons() {
-  return shuffle(treasureChestIcons).slice(0, 5);
+  const historyKey = "intuisity-treasure-piece-history";
+  const lastGameKey = "intuisity-treasure-last-game-pieces";
+  let previousPieces: string[] = [];
+  let lastGamePieces: string[] = [];
+
+  try {
+    previousPieces = JSON.parse(globalThis.localStorage?.getItem(historyKey) || "[]");
+    lastGamePieces = JSON.parse(globalThis.localStorage?.getItem(lastGameKey) || "[]");
+  } catch {
+    previousPieces = [];
+    lastGamePieces = [];
+  }
+
+  let availablePieces = treasureGamePieceCatalog.filter(
+    (piece) => !previousPieces.includes(piece) && !lastGamePieces.includes(piece)
+  );
+
+  if (availablePieces.length < 5) {
+    previousPieces = [];
+    availablePieces = treasureGamePieceCatalog.filter((piece) => !lastGamePieces.includes(piece));
+  }
+
+  const selectedPieces = shuffle(availablePieces).slice(0, 5);
+
+  try {
+    globalThis.localStorage?.setItem(historyKey, JSON.stringify([...previousPieces, ...selectedPieces].slice(-295)));
+    globalThis.localStorage?.setItem(lastGameKey, JSON.stringify(selectedPieces));
+  } catch {
+    // Browser storage may be unavailable in private mode.
+  }
+
+  return selectedPieces;
 }
 
 function makeTreasureWinMessage(triesUsed: number) {

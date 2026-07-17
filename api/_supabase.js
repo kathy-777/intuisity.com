@@ -51,6 +51,33 @@ function sendJson(response, status, payload) {
   response.status(status).json(payload);
 }
 
+async function readJsonBody(request) {
+  if (request.body && typeof request.body === "object") {
+    return request.body;
+  }
+
+  if (typeof request.body === "string") {
+    try {
+      return JSON.parse(request.body);
+    } catch {
+      return {};
+    }
+  }
+
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  if (!chunks.length) return {};
+
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return {};
+  }
+}
+
 function allowCors(request, response) {
   response.setHeader("Access-Control-Allow-Origin", "*");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -87,6 +114,7 @@ module.exports = {
   allowCors,
   getDateKey,
   normalizeEmail,
+  readJsonBody,
   requireAdminSecret,
   sendJson,
   supabaseRequest

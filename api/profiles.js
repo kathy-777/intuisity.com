@@ -1,11 +1,12 @@
-const { allowCors, normalizeEmail, sendJson, supabaseRequest } = require("./_supabase");
+const { allowCors, normalizeEmail, readJsonBody, sendJson, supabaseRequest } = require("./_supabase");
 
 module.exports = async function handler(request, response) {
   if (allowCors(request, response)) return;
   if (request.method !== "POST") return sendJson(response, 405, { error: "Method not allowed" });
 
   try {
-    const profile = request.body?.profile || request.body || {};
+    const body = await readJsonBody(request);
+    const profile = body.profile || body || {};
     const email = normalizeEmail(profile.email);
     if (!email) return sendJson(response, 400, { error: "Profile email is required" });
 

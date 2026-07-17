@@ -1,4 +1,5 @@
 const resendApiUrl = "https://api.resend.com/emails";
+const { readJsonBody } = require("./_supabase");
 
 module.exports = async function handler(request, response) {
   if (request.method === "OPTIONS") {
@@ -25,7 +26,7 @@ module.exports = async function handler(request, response) {
   }
 
   try {
-    const body = typeof request.body === "string" ? JSON.parse(request.body) : request.body || {};
+    const body = await readJsonBody(request);
     const friendEmail = String(body.friendEmail || "").trim().toLowerCase();
     const friendName = String(body.friendName || "friend").trim() || "friend";
     const senderName = String(body.senderName || "A friend").trim() || "A friend";

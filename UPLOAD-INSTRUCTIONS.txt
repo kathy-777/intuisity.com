@@ -45,22 +45,27 @@ Changes included:
 - Added Privacy Policy and Terms of Service links to the login, reset password, and sign-up screens.
 - Updated the website build so Vercel publishes privacy.html and terms.html.
 - Google sign-in now has a runtime public-config fallback so EXPO_PUBLIC_GOOGLE_CLIENT_ID can be read from the live Vercel deployment.
+- App.txt has been refreshed to match App.tsx so older Google-login code is not accidentally uploaded.
 - Admin reports show active time separately from page time.
 - Admin/test emails are excluded from reporting totals.
 - Admin reports include unique visitors, visitor volume, date range, and visitor trend chart/table.
 - Admin reports include a Time by Module graph with 1 day, 7 day, 14 day, and 30 day views.
 - User Insights opens as its own admin report page.
+- Daily reporting APIs now read saved results, answers, module time, profiles, feedback, friends, and invite data more reliably on Vercel.
 - Treasure Chest starts with Play a friend or Play computer.
 - Treasure Chest friend flow requires email, makes phone optional, and sends after submitting tiles.
 - Treasure Chest mobile play area now allows vertical scrolling so later tries can be reached.
 - Treasure Chest tile dragging is smoother on mobile and missed drops place in the next open slot.
 - Treasure Chest has 300 rotating win messages.
+- Treasure Chest now has 300 rotating game pieces and each new game avoids reusing the pieces from the previous game.
 - Read the Person locks the first score for the day while still allowing practice plays.
 - Train Your Knowing uses 300 revolving reward pictures.
+- Train Your Knowing now uses steadier picture links to reduce blank images and keeps 295 used pictures in history before cycling.
 - Train Your Knowing instructions now clearly explain the picture is hidden beneath one colored square.
 - Astrology birth time uses compact rolling selector and improved saved-details copy.
 - Astrology birth time picker is now smaller, rounded, and centered instead of full-width.
 - Astrology birth time now has visible scrolling number columns for Hour, Minute, and AM/PM.
+- Astrology birth time is now the last field in the birth details form.
 - Astrology form buttons work while the mobile keyboard is open and show clearer birthdate feedback.
 - Astrology no longer shows warning-like wording when birth details are saved but the city is not in the full-chart city list.
 - Astrology now has a much larger built-in birth city list for full-chart calculations.

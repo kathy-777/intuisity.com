@@ -1,15 +1,16 @@
-const { allowCors, normalizeEmail, sendJson, supabaseRequest } = require("./_supabase");
+const { allowCors, normalizeEmail, readJsonBody, sendJson, supabaseRequest } = require("./_supabase");
 
 module.exports = async function handler(request, response) {
   if (allowCors(request, response)) return;
   if (request.method !== "POST") return sendJson(response, 405, { error: "Method not allowed" });
 
   try {
-    const email = normalizeEmail(request.body?.email);
+    const body = await readJsonBody(request);
+    const email = normalizeEmail(body.email);
     if (!email) return sendJson(response, 400, { error: "Email is required" });
 
-    const savedAt = request.body?.savedAt || new Date().toISOString();
-    const rows = Object.entries(request.body?.feedback || {}).flatMap(([moduleLabel, value]) => {
+    const savedAt = body.savedAt || new Date().toISOString();
+    const rows = Object.entries(body.feedback || {}).flatMap(([moduleLabel, value]) => {
       const rating = Number(value?.rating || 0);
       const improvement = String(value?.improvement || "").trim();
       if (!rating && !improvement) return [];

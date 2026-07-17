@@ -1,18 +1,19 @@
-const { allowCors, getDateKey, normalizeEmail, sendJson, supabaseRequest } = require("./_supabase");
+const { allowCors, getDateKey, normalizeEmail, readJsonBody, sendJson, supabaseRequest } = require("./_supabase");
 
 module.exports = async function handler(request, response) {
   if (allowCors(request, response)) return;
   if (request.method !== "POST") return sendJson(response, 405, { error: "Method not allowed" });
 
   try {
-    const email = normalizeEmail(request.body?.email);
+    const body = await readJsonBody(request);
+    const email = normalizeEmail(body.email);
     if (!email) return sendJson(response, 400, { error: "Email is required" });
 
     await supabaseRequest("/daily_answers?on_conflict=email,date", {
       body: JSON.stringify({
         email,
-        date: request.body?.date || getDateKey(),
-        answers: request.body?.answers || {},
+        date: body.date || getDateKey(),
+        answers: body.answers || {},
         updated_at: new Date().toISOString()
       }),
       headers: { Prefer: "resolution=merge-duplicates,return=representation" },
