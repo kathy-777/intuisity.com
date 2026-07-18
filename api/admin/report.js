@@ -1,5 +1,5 @@
-const { allowCors, requireAdminSecret, sendJson } = require("../_supabase");
-const { buildAdminReport } = require("../_supabase-report");
+const { allowCors, requireAdminSecret, sendJson } = require("../../server/supabase");
+const { buildAdminReport } = require("../../server/supabase-report");
 
 module.exports = async function handler(request, response) {
   if (allowCors(request, response)) return;

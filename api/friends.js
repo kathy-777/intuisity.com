@@ -1,4 +1,4 @@
-const { allowCors, normalizeEmail, readJsonBody, sendJson, supabaseRequest } = require("./_supabase");
+const { allowCors, normalizeEmail, readJsonBody, sendJson, supabaseRequest } = require("../server/supabase");
 
 module.exports = async function handler(request, response) {
   if (allowCors(request, response)) return;

@@ -1,5 +1,5 @@
 const resendApiUrl = "https://api.resend.com/emails";
-const { readJsonBody } = require("./_supabase");
+const { readJsonBody } = require("../server/supabase");
 
 module.exports = async function handler(request, response) {
   if (request.method === "OPTIONS") {
