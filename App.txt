@@ -784,7 +784,7 @@ async function getGoogleClientId() {
   if (bundledClientId) return bundledClientId;
 
   try {
-    const response = await fetch("/api/public-config");
+    const response = await fetch(`/api/public-config?checkedAt=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) return "";
     const config = await response.json();
     return String(config?.googleClientId || "").trim();
