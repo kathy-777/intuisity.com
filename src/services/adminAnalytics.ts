@@ -8,6 +8,8 @@ export type AnalyticsEvent = {
   durationMs: number;
   activeDurationMs?: number;
   date: string;
+  clientChannel?: string;
+  deviceCategory?: string;
 };
 
 export type ModuleAnalyticsSummary = {
@@ -34,6 +36,12 @@ export type AdminAnalyticsReport = {
     date: string;
     uniqueVisitors: number;
     visits: number;
+  }>;
+  platformBreakdown: Array<{
+    channel: string;
+    label: string;
+    visits: number;
+    uniqueVisitors: number;
   }>;
   moduleDailyTrend: Array<{
     date: string;
@@ -68,6 +76,11 @@ export type UserInsightReport = {
   currentCity?: string;
   currentState?: string;
   currentCountry?: string;
+  birthChartType?: string;
+  sunSign?: string;
+  moonSign?: string;
+  risingSign?: string;
+  birthLocation?: string;
   totalClicks: number;
   totalTimeMs: number;
   totalActiveTimeMs: number;
@@ -128,6 +141,7 @@ export function recordModuleTime(email: string, page: string, startedAt: number,
     startedAt: new Date(startedAt).toISOString(),
     durationMs,
     activeDurationMs,
+    ...getClientPlatformDetails(),
     date: getDateKey(startedAt)
   };
 
@@ -160,9 +174,12 @@ export function markAnalyticsActivity() {
 }
 
 export function loadAdminAnalyticsReport(startDate = "", endDate = ""): AdminAnalyticsReport {
+  const allProfiles = loadProfiles().filter((profile) => !isExcludedReportEmail(String(profile.email || "")));
   const allEvents = loadAnalyticsEvents().filter((event) => !isExcludedReportEmail(event.email));
   const dateRange = normalizeDateRange(startDate, endDate);
-  const events = filterEventsByDateRange(allEvents, dateRange);
+  const visitorEvents = buildLocalVisitorEvents(allEvents, allProfiles);
+  const events = filterEventsByDateRange(allEvents, dateRange).filter((event) => !isVisitorOnlyEvent(event));
+  const rangedVisitorEvents = filterEventsByDateRange(visitorEvents, dateRange);
   const moduleTotals = new Map<string, ModuleAnalyticsSummary>();
 
   events.forEach((event) => {
@@ -192,11 +209,12 @@ export function loadAdminAnalyticsReport(startDate = "", endDate = ""): AdminAna
   const totalActiveTimeMs = events.reduce((total, event) => total + getEventActiveMs(event), 0);
 
   return {
-    totalUsers: loadProfiles().filter((profile) => !isExcludedReportEmail(String(profile.email || ""))).length,
+    totalUsers: allProfiles.length,
     totalVisits: events.length,
-    uniqueVisitors: countUniqueVisitors(events),
-    visitorVolume: buildVisitorVolume(allEvents, dateRange),
-    visitorTrend: buildVisitorTrend(events),
+    uniqueVisitors: countUniqueVisitors(rangedVisitorEvents),
+    visitorVolume: buildVisitorVolume(visitorEvents, dateRange),
+    visitorTrend: buildVisitorTrend(rangedVisitorEvents),
+    platformBreakdown: buildPlatformBreakdown(rangedVisitorEvents),
     moduleDailyTrend: buildModuleDailyTrend(events),
     dateRange,
     totalTimeMs,
@@ -268,13 +286,36 @@ function loadUserCount() {
   }
 }
 
-function loadProfiles(): Array<Record<string, string>> {
+function loadProfiles(): Array<Record<string, any>> {
   try {
     const stored = globalThis.localStorage?.getItem(profilesKey);
     return stored ? JSON.parse(stored) : [];
   } catch {
     return [];
   }
+}
+
+function buildLocalVisitorEvents(events: AnalyticsEvent[], profiles: Array<Record<string, any>>): AnalyticsEvent[] {
+  const profileEvents = profiles
+    .filter((profile) => profile.email && !isExcludedReportEmail(String(profile.email)))
+    .map((profile) => {
+      const savedAt = String(profile.updatedAt || profile.updated_at || new Date().toISOString());
+      return {
+        activeDurationMs: 0,
+        date: getDateKey(new Date(savedAt).getTime()),
+        durationMs: 0,
+        email: String(profile.email).toLowerCase(),
+        moduleId: "profile-signup",
+        moduleLabel: "Profile Signup",
+        startedAt: savedAt
+      };
+    });
+
+  return [...events, ...profileEvents];
+}
+
+function isVisitorOnlyEvent(event: AnalyticsEvent) {
+  return event.moduleId === "site-visit" || event.moduleLabel === "Website Visit" || event.moduleId === "profile-signup";
 }
 
 function buildLocalUserInsights(events: AnalyticsEvent[]): UserInsightReport[] {
@@ -303,6 +344,11 @@ function buildLocalUserInsights(events: AnalyticsEvent[]): UserInsightReport[] {
       currentCity: profile.currentCity || "",
       currentState: profile.currentState || "",
       currentCountry: profile.currentCountry || "",
+      birthChartType: profile.birthChart?.calculationType || "",
+      sunSign: profile.birthChart?.sunSign || "",
+      moonSign: profile.birthChart?.moonSign || "",
+      risingSign: profile.birthChart?.risingSign || "",
+      birthLocation: profile.birthLocationLabel || profile.birthChart?.locationLabel || "",
       totalClicks: userEvents.length,
       totalTimeMs: userEvents.reduce((sum, event) => sum + event.durationMs, 0),
       totalActiveTimeMs: userEvents.reduce((sum, event) => sum + getEventActiveMs(event), 0),
@@ -358,6 +404,33 @@ function buildVisitorTrend(events: AnalyticsEvent[]) {
     }));
 }
 
+function buildPlatformBreakdown(events: AnalyticsEvent[]) {
+  const platformMap = new Map<string, { channel: string; label: string; visits: number; visitorEmails: Set<string> }>();
+
+  events.forEach((event) => {
+    const channel = normalizePlatformChannel(event.clientChannel || event.deviceCategory || "");
+    const current = platformMap.get(channel) || {
+      channel,
+      label: getPlatformLabel(channel),
+      visits: 0,
+      visitorEmails: new Set<string>()
+    };
+    current.visits += 1;
+    const email = event.email.trim().toLowerCase();
+    if (email) current.visitorEmails.add(email);
+    platformMap.set(channel, current);
+  });
+
+  return ["desktop-web", "mobile-web", "app"]
+    .map((channel) => platformMap.get(channel) || { channel, label: getPlatformLabel(channel), visits: 0, visitorEmails: new Set<string>() })
+    .map((entry) => ({
+      channel: entry.channel,
+      label: entry.label,
+      visits: entry.visits,
+      uniqueVisitors: entry.visitorEmails.size
+    }));
+}
+
 function countUniqueVisitors(events: AnalyticsEvent[]) {
   return new Set(events.map((event) => event.email.trim().toLowerCase()).filter(Boolean)).size;
 }
@@ -395,6 +468,37 @@ function calculateActiveDuration(startedAt: number, endedAt: number) {
 
 function getEventActiveMs(event: AnalyticsEvent) {
   return Math.min(event.durationMs, event.activeDurationMs ?? event.durationMs);
+}
+
+function getClientPlatformDetails() {
+  const browserWindow = typeof globalThis !== "undefined" ? (globalThis as any).window : undefined;
+  const navigatorRef = typeof globalThis !== "undefined" ? (globalThis as any).navigator : undefined;
+  const userAgent = String(navigatorRef?.userAgent || "");
+  const isStandalone = Boolean(
+    browserWindow?.matchMedia?.("(display-mode: standalone)")?.matches ||
+    navigatorRef?.standalone
+  );
+  const appChannel = Boolean((globalThis as any).Expo || navigatorRef?.product === "ReactNative" || isStandalone);
+  const mobileWeb = /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent);
+  const clientChannel = appChannel ? "app" : mobileWeb ? "mobile-web" : "desktop-web";
+
+  return {
+    clientChannel,
+    deviceCategory: getPlatformLabel(clientChannel)
+  };
+}
+
+function normalizePlatformChannel(value: string) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("app") || normalized.includes("reactnative")) return "app";
+  if (normalized.includes("mobile")) return "mobile-web";
+  return "desktop-web";
+}
+
+function getPlatformLabel(channel: string) {
+  if (channel === "app") return "App";
+  if (channel === "mobile-web") return "Mobile Web";
+  return "Desktop Web";
 }
 
 function loadFeedbackReport() {

@@ -124,7 +124,7 @@ function isAdminUser(profile: UserProfile | null) {
 }
 
 export default function App() {
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(loadActiveProfile);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => loadActiveProfile() || loadTreasureInviteGuestProfile());
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("today");
   const [homeRequestId, setHomeRequestId] = useState(0);
@@ -921,7 +921,32 @@ function loadActiveProfile(): UserProfile | null {
   }
 }
 
+function loadTreasureInviteGuestProfile(): UserProfile | null {
+  const browserWindow = typeof globalThis !== "undefined" ? (globalThis as any).window : undefined;
+  const params = new URLSearchParams(browserWindow?.location?.search || "");
+  if (params.get("treasureInvite") !== "1") return null;
+
+  return {
+    authProvider: "guest",
+    birthCity: "",
+    birthCountry: "",
+    birthState: "",
+    birthTime: "",
+    birthdate: "",
+    currentCity: "",
+    currentCountry: detectLocaleCountry(),
+    currentState: "",
+    email: `treasure-guest-${Date.now()}@anonymous.intuisity`,
+    language: "en",
+    name: "Invited Friend",
+    phone: "",
+    reminderTime: "9:00 AM",
+    timeZone: detectTimeZone()
+  };
+}
+
 function saveProfile(profile: UserProfile) {
+  if (profile.authProvider === "guest") return;
   const profiles = loadProfiles().filter((item) => item.email !== profile.email);
   globalThis.localStorage?.setItem(profilesKey, JSON.stringify([...profiles, profile]));
   globalThis.localStorage?.setItem(activeProfileKey, profile.email);
@@ -1414,6 +1439,8 @@ function AdminDashboard() {
   const [reportEndDate, setReportEndDate] = useState("");
   const [moduleTrendDays, setModuleTrendDays] = useState<1 | 7 | 14 | 30>(7);
   const [backendLogRefresh, setBackendLogRefresh] = useState(0);
+  const [reportRefreshId, setReportRefreshId] = useState(0);
+  const [reportRefreshedAt, setReportRefreshedAt] = useState("");
   const localReport = loadAdminAnalyticsReport(reportStartDate, reportEndDate);
   const report = backendReport || localReport;
   const recentBackendSaves = useMemo(loadBackendSyncLog, [backendLogRefresh]);
@@ -1442,6 +1469,10 @@ function AdminDashboard() {
   const saveAdminPasswordForDevice = () => {
     saveAdminSecret(adminSecret);
     setAdminSecretSavedAt(adminSecret.trim() ? "Saved on this device" : "Admin password cleared from this device");
+  };
+  const refreshReports = () => {
+    setBackendStatus("Refreshing backend report...");
+    setReportRefreshId((current) => current + 1);
   };
   const renderUserInsightsList = (limit?: number) => (
     report.userInsights?.length ? report.userInsights.slice(0, limit || report.userInsights.length).map((user) => (
@@ -1493,6 +1524,7 @@ function AdminDashboard() {
       if (nextReport) {
         setBackendReport(nextReport);
         setBackendStatus("Connected to real backend database");
+        setReportRefreshedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
       } else {
         setBackendStatus(adminSecret.trim() ? "Admin backend could not be reached" : "Enter the admin report password to unlock live reports");
       }
@@ -1500,7 +1532,7 @@ function AdminDashboard() {
     return () => {
       active = false;
     };
-  }, [adminSecret, reportEndDate, reportStartDate]);
+  }, [adminSecret, reportEndDate, reportRefreshId, reportStartDate]);
 
   if (adminReportPage === "user-insights") {
     return (
@@ -1525,6 +1557,15 @@ function AdminDashboard() {
           <Metric icon="person-circle-outline" label="Unique visitors" value={report.uniqueVisitors} />
           <Metric icon="pulse-outline" label="Tracked visits" value={report.totalVisits} />
           <Metric icon="flash-outline" label="Active time" value={formatDuration(report.totalActiveTimeMs || report.totalTimeMs)} />
+        </View>
+        <View style={styles.adminRefreshRow}>
+          <Pressable onPress={refreshReports} style={styles.adminLightButton}>
+            <Ionicons color="#7555C7" name="refresh-outline" size={17} />
+            <Text style={styles.adminLightButtonText}>Refresh reports</Text>
+          </Pressable>
+          <Text style={styles.adminFeedbackMeta}>
+            {reportRefreshedAt ? `Last refreshed ${reportRefreshedAt}` : "Tap refresh after a new signup."}
+          </Text>
         </View>
 
         <View style={styles.adminDateRangeCard}>
@@ -1594,9 +1635,17 @@ function AdminDashboard() {
           <Text style={styles.adminInsightTitle}>{backendStatus}</Text>
           <Text style={styles.adminInsightText}>Most used area: {report.mostUsedModule}</Text>
           <Text style={styles.adminStatusMeta}>
-            {backendReport ? "Live Supabase data" : "Local browser fallback"}
+            {backendReport ? `Live Supabase data${reportRefreshedAt ? ` · refreshed ${reportRefreshedAt}` : ""}` : "Local browser fallback"}
           </Text>
         </View>
+      </View>
+
+      <View style={styles.adminRefreshRow}>
+        <Pressable onPress={refreshReports} style={styles.adminLightButton}>
+          <Ionicons color="#7555C7" name="refresh-outline" size={17} />
+          <Text style={styles.adminLightButtonText}>Refresh reports</Text>
+        </Pressable>
+        <Text style={styles.adminFeedbackMeta}>Use this after testing a new signup or login.</Text>
       </View>
 
       <View style={styles.adminSecretCard}>
@@ -1720,6 +1769,26 @@ function AdminDashboard() {
         <Metric icon="calendar-outline" label="Last 7 days" value={report.visitorVolume?.week || 0} />
         <Metric icon="calendar-number-outline" label="Last 30 days" value={report.visitorVolume?.month || 0} />
         <Metric icon="filter-outline" label="Selected range" value={report.visitorVolume?.range || report.uniqueVisitors || 0} />
+      </View>
+
+      <Text style={styles.adminSectionTitle}>Traffic by platform</Text>
+      <View style={styles.adminVolumeGrid}>
+        {(report.platformBreakdown || [
+          { channel: "desktop-web", label: "Desktop Web", uniqueVisitors: 0, visits: 0 },
+          { channel: "mobile-web", label: "Mobile Web", uniqueVisitors: 0, visits: 0 },
+          { channel: "app", label: "App", uniqueVisitors: 0, visits: 0 }
+        ]).map((platform) => (
+          <View key={platform.channel} style={styles.adminPlatformCard}>
+            <Ionicons
+              color={platform.channel === "app" ? "#6544B8" : platform.channel === "mobile-web" ? "#008A94" : "#7555C7"}
+              name={platform.channel === "app" ? "phone-portrait-outline" : platform.channel === "mobile-web" ? "phone-portrait-outline" : "desktop-outline"}
+              size={24}
+            />
+            <Text style={styles.metricValue}>{platform.uniqueVisitors}</Text>
+            <Text style={styles.metricLabel}>{platform.label}</Text>
+            <Text style={styles.adminFeedbackMeta}>{platform.visits} visits</Text>
+          </View>
+        ))}
       </View>
       <View style={styles.adminDateRangeCard}>
         <View style={styles.adminModuleTopline}>
@@ -2538,6 +2607,13 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 9
   },
+  adminRefreshRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 14
+  },
   adminLightButton: {
     alignItems: "center",
     backgroundColor: "#FFFFFF",
@@ -2553,6 +2629,17 @@ const styles = StyleSheet.create({
     color: "#4D3A7A",
     fontSize: 12,
     fontWeight: "900"
+  },
+  adminPlatformCard: {
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#DCCFF5",
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    gap: 5,
+    minWidth: 140,
+    padding: 14
   },
   adminSavedText: {
     color: "#008A94",

@@ -85,6 +85,12 @@ Changes included:
 - Admin reports now hide old browser save-check rows entirely so stale status 300 entries do not appear as API failures.
 - Admin reports now hide backend API/save details inside a Backend API reports dropdown that opens with an arrow.
 - Admin reports now count users found through profiles, logins, module activity, results, feedback, and friend saves so visitors do not disappear when a profile row is missing.
+- Admin reports now have a Refresh reports button so new signups and logins can be pulled into the report immediately.
+- Admin report requests now bypass browser/Vercel caching so the report is not stuck on an older user list.
+- Visitor volume now also counts new saved profile signups, so Today's visitor volume does not stay at 0 when someone creates an account before playing a module.
+- Profile signup visitor records are kept out of the challenge module charts so module usage remains focused on real challenge activity.
+- Admin reports now include a Traffic by platform section showing Desktop Web, Mobile Web, and App visitors/visits.
+- Analytics events now save client channel details so future app usage can be separated from web and mobile web.
 - Login, Google login, account creation, and password reset now create a small Login analytics event so signed-in visitors are counted even before they play a module.
 - Website visitors are now counted when they open the app, even before creating an account.
 - Anonymous website visits now count in visitor totals and visitor-over-time reports, but they do not appear as fake people in User Insights.

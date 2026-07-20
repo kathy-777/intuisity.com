@@ -26,6 +26,12 @@ type BackendAdminReport = {
     uniqueVisitors: number;
     visits: number;
   }>;
+  platformBreakdown: Array<{
+    channel: string;
+    label: string;
+    visits: number;
+    uniqueVisitors: number;
+  }>;
   moduleDailyTrend: Array<{
     date: string;
     modules: Array<{
@@ -186,8 +192,13 @@ export function syncModuleTime(event: {
   durationMs: number;
   activeDurationMs?: number;
   date: string;
+  clientChannel?: string;
+  deviceCategory?: string;
 }) {
-  postToBackend("/api/analytics/module-time", event);
+  postToBackend("/api/analytics/module-time", {
+    ...getClientPlatformDetails(),
+    ...event
+  });
 }
 
 export function syncSiteVisit() {
@@ -255,9 +266,14 @@ export async function loadBackendAdminReport(adminSecret = loadAdminSecret(), st
     const params = new URLSearchParams();
     if (startDate.trim()) params.set("startDate", startDate.trim());
     if (endDate.trim()) params.set("endDate", endDate.trim());
+    params.set("_", String(Date.now()));
     const query = params.toString();
     const response = await fetch(`${getBackendUrl()}/api/admin/report${query ? `?${query}` : ""}`, {
-      headers: adminSecret.trim() ? { "X-Intuisity-Admin-Secret": adminSecret.trim() } : undefined
+      cache: "no-store",
+      headers: {
+        ...(adminSecret.trim() ? { "X-Intuisity-Admin-Secret": adminSecret.trim() } : {}),
+        "Cache-Control": "no-cache"
+      }
     });
     if (!response.ok) return null;
     return await response.json();
@@ -333,4 +349,21 @@ function getAnonymousVisitorEmail() {
   }
 
   return `visitor-${visitorId.toLowerCase()}@anonymous.intuisity`;
+}
+
+function getClientPlatformDetails() {
+  const browserWindow = typeof globalThis !== "undefined" ? (globalThis as any).window : undefined;
+  const navigatorRef = typeof globalThis !== "undefined" ? (globalThis as any).navigator : undefined;
+  const userAgent = String(navigatorRef?.userAgent || "");
+  const isStandalone = Boolean(
+    browserWindow?.matchMedia?.("(display-mode: standalone)")?.matches ||
+    (navigatorRef as any)?.standalone
+  );
+  const appChannel = (globalThis as any).Expo || (navigatorRef as any)?.product === "ReactNative" || isStandalone;
+  const mobileWeb = /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent);
+
+  return {
+    clientChannel: appChannel ? "app" : mobileWeb ? "mobile-web" : "desktop-web",
+    deviceCategory: appChannel ? "App" : mobileWeb ? "Mobile Web" : "Desktop Web"
+  };
 }
