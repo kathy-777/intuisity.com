@@ -3589,7 +3589,7 @@ function parseBirthTimePickerValue(value: string) {
 }
 
 function validBirthdate(value: string) {
-  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!match) return false;
   const date = new Date(Number(match[3]), Number(match[1]) - 1, Number(match[2]));
   return date.getFullYear() === Number(match[3]) && date.getMonth() === Number(match[1]) - 1 && date.getDate() === Number(match[2]);

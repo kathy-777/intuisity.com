@@ -119,6 +119,14 @@ export function loadBackendSyncLog(): BackendSyncLogEntry[] {
   }
 }
 
+export function clearBackendSyncLog() {
+  try {
+    globalThis.localStorage?.removeItem(backendSyncLogKey);
+  } catch {
+    // Ignore storage errors so the admin UI still works.
+  }
+}
+
 export function backendUserInsightsCsvUrl(adminSecret = loadAdminSecret(), startDate = "", endDate = "") {
   const params = new URLSearchParams();
   if (adminSecret.trim()) params.set("adminSecret", adminSecret.trim());

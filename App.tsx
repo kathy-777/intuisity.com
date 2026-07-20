@@ -22,7 +22,7 @@ import {
 } from "./src/data/mockData";
 import { createStripeCheckoutSession, premiumPlan } from "./src/services/subscriptions";
 import { formatDuration, loadAdminAnalyticsReport } from "./src/services/adminAnalytics";
-import { backendUserInsightsCsvUrl, loadAdminSecret, loadBackendAdminReport, loadBackendSyncLog, saveAdminSecret, syncDailyAnswers, syncProfile } from "./src/services/backendApi";
+import { backendUserInsightsCsvUrl, clearBackendSyncLog, loadAdminSecret, loadBackendAdminReport, loadBackendSyncLog, saveAdminSecret, syncDailyAnswers, syncProfile } from "./src/services/backendApi";
 import { DailyChallengeHub } from "./src/components/DailyChallengeHub";
 import { UserProfile } from "./src/types/userProfile";
 
@@ -1383,9 +1383,10 @@ function AdminDashboard() {
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
   const [moduleTrendDays, setModuleTrendDays] = useState<1 | 7 | 14 | 30>(7);
+  const [backendSyncLogVersion, setBackendSyncLogVersion] = useState(0);
   const localReport = loadAdminAnalyticsReport(reportStartDate, reportEndDate);
   const report = backendReport || localReport;
-  const recentBackendSaves = loadBackendSyncLog();
+  const recentBackendSaves = useMemo(() => loadBackendSyncLog(), [backendSyncLogVersion]);
   const hasActivity = report.totalUsers > 0 || report.totalVisits > 0 || report.feedbackCount > 0;
   const visitorTrendMax = Math.max(1, ...(report.visitorTrend || []).map((day) => day.uniqueVisitors));
   const visitorTrendRows = (report.visitorTrend || []).slice(-14).reverse();
@@ -1554,6 +1555,7 @@ function AdminDashboard() {
           <Ionicons color="#008A94" name={backendReport ? "checkmark-circle-outline" : "desktop-outline"} size={24} />
         </View>
         <View style={styles.adminInsightCopy}>
+          <Text style={styles.adminInsightTitle}>Live backend status</Text>
           <Text style={styles.adminInsightTitle}>{backendStatus}</Text>
           <Text style={styles.adminInsightText}>Most used area: {report.mostUsedModule}</Text>
           <Text style={styles.adminStatusMeta}>
@@ -1615,7 +1617,20 @@ function AdminDashboard() {
         </View>
       )}
 
-      <Text style={styles.adminSectionTitle}>Backend save check</Text>
+      <View style={styles.adminSectionHeaderRow}>
+        <Text style={styles.adminSectionTitle}>Recent save check</Text>
+        <Pressable
+          onPress={() => {
+            clearBackendSyncLog();
+            setBackendSyncLogVersion((current) => current + 1);
+          }}
+          style={styles.adminLightButton}
+        >
+          <Ionicons color="#7555C7" name="trash-outline" size={17} />
+          <Text style={styles.adminLightButtonText}>Clear</Text>
+        </Pressable>
+      </View>
+      <Text style={styles.adminFeedbackMeta}>Old failed attempts can stay here until you clear them, so you can keep track of what already needs attention.</Text>
       {recentBackendSaves.length ? (
         recentBackendSaves.slice(0, 6).map((entry, index) => (
           <View key={`${entry.path}-${entry.savedAt}-${index}`} style={styles.adminFeedbackCard}>
