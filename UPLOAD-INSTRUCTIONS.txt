@@ -10,6 +10,7 @@ Before redeploying, delete these two old testing API files from GitHub so Vercel
 - App.tsx
 - package.json
 - supabase-schema.sql
+- api/_supabase.js
 - api/_supabase-report.js
 - api/birth-location.js
 - api/public-config.js
@@ -38,6 +39,25 @@ After Vercel deploys, run this in Supabase SQL editor if you have not already:
 
 alter table analytics_events add column if not exists active_duration_ms integer default 0;
 
+To store birth chart data as reportable profile columns, also run this in Supabase SQL editor:
+
+alter table profiles add column if not exists birth_latitude numeric;
+alter table profiles add column if not exists birth_longitude numeric;
+alter table profiles add column if not exists birth_location_label text;
+alter table profiles add column if not exists birth_chart_json jsonb default '{}'::jsonb;
+alter table profiles add column if not exists birth_chart_type text;
+alter table profiles add column if not exists sun_sign text;
+alter table profiles add column if not exists moon_sign text;
+alter table profiles add column if not exists rising_sign text;
+alter table profiles add column if not exists midheaven_sign text;
+alter table profiles add column if not exists strongest_aspect text;
+
+If Supabase says "new row violates row-level security policy", check Vercel Settings > Environment Variables:
+
+- SUPABASE_URL should be https://tioepurhcbispxqahjqb.supabase.co
+- SUPABASE_SERVICE_ROLE_KEY must be the secret service_role key from Supabase, not the publishable/anon key.
+- After changing either value, redeploy the Vercel project.
+
 Google app setup links after Vercel deploys:
 
 - Privacy Policy URL: https://www.intuisity.com/privacy.html
@@ -50,6 +70,7 @@ Changes included:
 - Added Privacy Policy and Terms of Service links to the login, reset password, and sign-up screens.
 - Updated the website build so Vercel publishes privacy.html and terms.html.
 - Google sign-in now has a runtime public-config fallback so EXPO_PUBLIC_GOOGLE_CLIENT_ID can be read from the live Vercel deployment.
+- Google sign-in now fetches public-config with no-cache so the browser does not keep an older missing-client-id response.
 - App.txt has been refreshed to match App.tsx so older Google-login code is not accidentally uploaded.
 - Admin reports show active time separately from page time.
 - Admin/test emails are excluded from reporting totals.
@@ -57,8 +78,40 @@ Changes included:
 - Admin reports include a Time by Module graph with 1 day, 7 day, 14 day, and 30 day views.
 - User Insights opens as its own admin report page.
 - Daily reporting APIs now read saved results, answers, module time, profiles, feedback, friends, and invite data more reliably on Vercel.
+- Module-time analytics now retries without active_duration_ms if Supabase is missing that column, so activity saves do not fail while the schema update is pending.
+- Supabase API helper now gives a clear warning if the service role key is accidentally set to the public/anon key and cleans up Supabase URLs pasted with /rest/v1/.
+- Admin reports now label backend save checks as recent browser history and include a Clear button so old failed API attempts do not keep showing as Needs fix.
+- Admin reports now label old failed browser save checks as Past issue instead of Needs fix.
+- Admin reports now hide old browser save-check rows entirely so stale status 300 entries do not appear as API failures.
+- Admin reports now hide backend API/save details inside a Backend API reports dropdown that opens with an arrow.
+- Admin reports now count users found through profiles, logins, module activity, results, feedback, and friend saves so visitors do not disappear when a profile row is missing.
+- Login, Google login, account creation, and password reset now create a small Login analytics event so signed-in visitors are counted even before they play a module.
+- Website visitors are now counted when they open the app, even before creating an account.
+- Anonymous website visits now count in visitor totals and visitor-over-time reports, but they do not appear as fake people in User Insights.
+- Website Visit records are kept out of the module-time challenge charts so the module reports stay focused on actual challenge usage.
+- User profiles now save birth chart data, including chart calculation type, birth location label, Sun sign, Moon sign, Rising sign, Midheaven sign, and strongest aspect when available.
+- User Insights CSV now includes birth chart type, Sun sign, Moon sign, Rising sign, and birth location.
+- Admin User Insights cards now show saved chart basics when available.
+- Premium page now says Premium is not live yet, lets users request notification, and highlights that the first 100 signups get Premium free for the first year.
+- Premium interest button clicks are now tracked in backend analytics as "Premium interest signup" so admin reports can show which visitors clicked.
 - Treasure Chest starts with Play a friend or Play computer.
 - Treasure Chest friend flow requires email, makes phone optional, and sends after submitting tiles.
+- Treasure Chest email invites now show the real Resend error message when sending fails, making setup issues easier to diagnose.
+- Treasure Chest email invites now open a playable friend challenge link instead of only showing the friend's icons in the email.
+- Invited friends can play the Treasure Chest challenge without creating an account.
+- Invited friends are asked to create or sign in only if they want to invite their own friends.
+- Treasure Chest invite emails now use a clearer Play Treasure Chest button.
+- Treasure Chest friend play now has one clear chosen-tile row instead of repeating the selected tiles on an extra review row.
+- Treasure Chest friend play now shows an obvious Message to your friend box right before the user locks in and sends the tiles.
+- Treasure Chest friend submit button now says Lock in my tiles and send.
+- Treasure Chest win messages still pop out of the chest, and the friend's message now also stays visible in a clean card below the treasure box for reading or screenshots.
+- Treasure Chest friend setup now uses a clear Next button after the email field to save/select the friend and continue to the tile screen.
+- Treasure Chest friend setup no longer relies on the small plus button, and the lower continue button stays disabled until a saved friend is selected.
+- Treasure Chest friend tile screen now clearly says to tap five treasures first, labels the order boxes, and changes the submit button to show how many tiles are still needed.
+- Treasure Chest friend tile screen now shows five visible empty boxes at the top before the treasure choices, with stronger dashed outlines and Empty labels.
+- Treasure Chest no longer uses plus signs as empty placeholders anywhere in the tile boxes; empty spaces now say Empty.
+- Treasure Chest game pieces now display as one clean icon per tile instead of icon-plus-mark combinations.
+- Treasure Chest empty boxes and remaining available icons are brighter and larger on mobile so users can clearly see what is left to choose.
 - Treasure Chest mobile play area now allows vertical scrolling so later tries can be reached.
 - Treasure Chest tile dragging is smoother on mobile and missed drops place in the next open slot.
 - Treasure Chest has 300 rotating win messages.
@@ -67,6 +120,9 @@ Changes included:
 - Train Your Knowing uses 300 revolving reward pictures.
 - Train Your Knowing now uses steadier picture links to reduce blank images and keeps 295 used pictures in history before cycling.
 - Train Your Knowing instructions now clearly explain the picture is hidden beneath one colored square.
+- Remote Viewing answer/results screen is more compact so the next-test button stays visible without scrolling on laptop screens.
+- Remote Viewing drawing screen is shorter and uses side-by-side action buttons so Reveal two choices is visible without scrolling.
+- Remote Viewing mobile answer pictures now use a taller photo shape so both choice images show fully instead of being cut off.
 - Astrology birth time uses compact rolling selector and improved saved-details copy.
 - Astrology birth time picker is now smaller, rounded, and centered instead of full-width.
 - Astrology birth time now has visible scrolling number columns for Hour, Minute, and AM/PM.
@@ -83,3 +139,4 @@ Changes included:
 - Challenge 3 shows two ideas per day and moves through the pool before starting over.
 - Challenge 3 ideas are simpler intuition-friendly actions like guessing who will call, inviting someone to lunch, or writing stream-of-consciousness notes.
 - Challenge 3 no longer frames tasks around who was good to the user in the past.
+- Read the Person portraits now stay contained inside the frame on mobile so heads are not cut off.

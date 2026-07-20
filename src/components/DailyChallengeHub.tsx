@@ -611,6 +611,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
   const [treasureWinText, setTreasureWinText] = useState("");
   const [treasureNote, setTreasureNote] = useState("");
   const [treasureSceneImage, setTreasureSceneImage] = useState(() => treasureSceneImages[0]);
+  const [invitedTreasureSender, setInvitedTreasureSender] = useState("");
   const [selectedTreasureDrag, setSelectedTreasureDrag] = useState<TreasureDragItem | null>(null);
   const treasurePointerDragRef = useRef<TreasureDragItem | null>(null);
   const treasureIgnoreClickRef = useRef(false);
@@ -649,6 +650,25 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
   useEffect(() => {
     setPage("hub");
   }, [homeRequestId]);
+
+  useEffect(() => {
+    const invite = loadTreasureInviteFromUrl();
+    if (!invite) return;
+    setPage("social-prediction");
+    setOpponent("computer");
+    setTreasureFlowStep("play");
+    setTreasureIcons(invite.icons);
+    setTreasureSecret(invite.icons);
+    setTreasureGuess(Array(5).fill(null));
+    setTreasureAttemptRows([]);
+    setTreasureLocked(Array(5).fill(false));
+    setTreasureTriesLeft(4);
+    setTreasureWinText("");
+    setTreasureNote(invite.note);
+    setInvitedTreasureSender(invite.senderName);
+    setTreasureSceneImage(shuffle(treasureSceneImages)[0]);
+    setComputerResult(false);
+  }, []);
 
   const updateBirthDetail = (field: keyof typeof birthDetails, value: string) => {
     setBirthDetails({ ...birthDetails, [field]: value });
@@ -1801,7 +1821,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
     const treasureFriendSubmitted = treasureWinText.startsWith("Your treasure tiles");
     const treasureWon = Boolean(treasureWinText) && !treasureLost && !treasureFriendSubmitted;
     const treasureInspirationMessage =
-      opponent === "friend" && treasureNote.trim()
+      (opponent === "friend" || invitedTreasureSender) && treasureNote.trim()
         ? treasureNote.trim()
         : "You are bright, brave, and guided.";
     const treasureInspirationWords = treasureInspirationMessage.split(/\s+/).filter(Boolean);
@@ -1813,10 +1833,16 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
       treasureLost && styles.treasureSceneLost
     ];
     const chooseTreasureMode = (mode: "friend" | "computer") => {
+      if (mode === "friend" && userProfile.authProvider === "guest") {
+        setFriendPhoneError("Please create or sign in to your Intuisity account before inviting your own friends.");
+        onLogout();
+        return;
+      }
       setOpponent(mode);
       setFriendPhoneError("");
       setFriendInviteStatus("");
       setTreasureWinText("");
+      setInvitedTreasureSender("");
       if (mode === "friend") {
         setTreasureSecret([]);
         setTreasureGuess(Array(5).fill(null));
@@ -1871,6 +1897,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
       setSelectedTreasureDrag(null);
       setTreasureSceneImage(shuffle(treasureSceneImages)[0]);
       setOpponent(mode);
+      setInvitedTreasureSender("");
       setTreasureFlowStep("play");
       setComputerResult(false);
       setAnswers((current) => {
@@ -1994,10 +2021,10 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
         setTreasureWinText("Your treasure tiles were submitted. Your friend will be invited to answer your game.");
         setFriendInviteStatus("Sending friend challenge invite...");
         Promise.all(selectedFriends.map((friend) => sendFriendInviteEmail({
-          challengeUrl: getAppOrigin(),
+          challengeUrl: getTreasureInviteUrl(submittedGuess, treasureNote.trim(), userProfile.name || "A friend"),
           friendEmail: friend.email || "",
           friendName: friend.name,
-          note: `Treasure tiles: ${submittedGuess.join(" ")}${treasureNote.trim() ? `\n\n${treasureNote.trim()}` : ""}`,
+          note: treasureNote.trim(),
           senderName: userProfile.name || "A friend"
         })))
           .then(() => setFriendInviteStatus(`Challenge sent to ${selectedFriends.length} ${selectedFriends.length === 1 ? "friend" : "friends"}. When a friend sends you their tiles, you will get a notification to answer their game.`))
@@ -2282,43 +2309,33 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
               )
             ))
           ),
-          React.createElement("div", { style: { color: "#706982", fontSize: 12, fontWeight: 900, marginBottom: 8, textTransform: "uppercase" } }, opponent === "friend" ? "Review your five tiles" : "Your order"),
-          React.createElement(
-            "div",
-            { style: { display: "flex", gap: 8, justifyContent: "center", marginBottom: 14 } },
-            treasureGuess.map((icon, index) => {
-              const active = treasureDropSlot === index;
-              return React.createElement(
-                "div",
-                {
-                  "data-treasure-slot-index": index,
-                  draggable: false,
-                  key: `treasure-slot-${index}`,
-                  onClick: () => icon && tapTreasureIcon({ icon, from: "slot", index }),
-                  onDragEnter: () => !treasureLocked[index] && setTreasureDropSlot(index),
-                  onDragLeave: () => setTreasureDropSlot((current) => current === index ? null : current),
-                  onDragOver: (event: any) => {
-                    if (!treasureLocked[index]) {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                      setTreasureDropSlot(index);
-                    }
-                  },
-                  onDragStart: (event: any) => {
-                    event.preventDefault();
-                  },
-                  onDrop: (event: any) => {
-                    event.preventDefault();
-                    const drag = readTreasureDrag(event);
-                    if (drag) placeTreasureIcon(drag, index);
-                    setTreasureDropSlot(null);
-                  },
-                  onPointerDown: (event: any) => icon && !treasureLocked[index] && startTreasurePointerDrag(event, { icon, from: "slot", index }),
-                  style: webSlotStyle(treasureLocked[index], active, !icon)
-                },
-                icon || "Empty"
-              );
-            })
+          opponent === "friend" && React.createElement(
+            "label",
+            { style: { color: "#6544B8", display: "block", fontSize: 13, fontWeight: 900, marginBottom: 7 } },
+            "Message to your friend"
+          ),
+          opponent === "friend" && React.createElement(
+            "textarea",
+            {
+              onChange: (event: any) => setTreasureNote(event.target.value),
+              placeholder: "Write a short message that appears when your friend opens the chest.",
+              style: {
+                background: "#FFFFFF",
+                border: "2px solid #BFE8E8",
+                borderRadius: 8,
+                color: "#30264C",
+                fontFamily: "inherit",
+                fontSize: 14,
+                fontWeight: 700,
+                lineHeight: "20px",
+                marginBottom: 12,
+                minHeight: 84,
+                padding: 12,
+                resize: "vertical",
+                width: "100%"
+              },
+              value: treasureNote
+            }
           ),
           React.createElement(
             "button",
@@ -2350,7 +2367,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
             opponent === "friend"
               ? treasureMissingCount > 0
                 ? `Choose ${treasureMissingCount} more ${treasureMissingCount === 1 ? "tile" : "tiles"}`
-                : "Submit my tiles"
+                : "Lock in my tiles and send"
               : treasureMissingCount > 0
                 ? `Choose ${treasureMissingCount} more`
                 : "Try unlocking"
@@ -2426,21 +2443,21 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
               ))}
             </View>
           )}
-          <Text style={styles.selectionCount}>{opponent === "friend" ? "Review your five tiles" : "Your order"}</Text>
-          <View style={styles.treasureSlotRow}>
-            {treasureGuess.map((icon, index) => (
-                <Pressable
-                  key={`treasure-slot-${index}`}
-                  onPress={() => icon && tapTreasureIcon({ icon, from: "slot", index })}
-                  style={[
-                    styles.treasureSlot,
-                    treasureLocked[index] && styles.treasureSlotCorrect
-                  ]}
-                >
-                  <Text style={[styles.treasureTokenText, !icon && styles.treasureEmptySlotText]}>{icon || "Empty"}</Text>
-                </Pressable>
-            ))}
-          </View>
+          {opponent === "friend" && (
+            <View style={styles.treasureMessageCard}>
+              <Text style={styles.treasureMessageLabel}>Message to your friend</Text>
+              <TextInput
+                accessibilityLabel="Message to friend"
+                multiline
+                onChangeText={setTreasureNote}
+                placeholder="Write a short message that appears when your friend opens the chest."
+                placeholderTextColor="#9A93AA"
+                style={styles.treasureMessageInput}
+                textAlignVertical="top"
+                value={treasureNote}
+              />
+            </View>
+          )}
           <Pressable
             disabled={treasureMissingCount > 0}
             onPress={submitTreasureGuess}
@@ -2451,7 +2468,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
               {opponent === "friend"
                 ? treasureMissingCount > 0
                   ? `Choose ${treasureMissingCount} more ${treasureMissingCount === 1 ? "tile" : "tiles"}`
-                  : "Submit my tiles"
+                  : "Lock in my tiles and send"
                 : treasureMissingCount > 0
                   ? `Choose ${treasureMissingCount} more`
                   : "Try unlocking"}
@@ -2465,8 +2482,8 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
       <View>
         <ChallengePageHeader
           eyebrow="Challenge 1 · Treasure Chest"
-          title="Treasure Chest"
-          subtitle="Try a friend's treasure challenge or play the computer. Arrange the five treasures in the hidden order. You have four tries."
+          title={invitedTreasureSender ? `${invitedTreasureSender}'s Treasure Chest` : "Treasure Chest"}
+          subtitle={invitedTreasureSender ? "Your friend hid five treasures. Guess the order in four tries, then create an account if you want to invite friends too." : "Try a friend's treasure challenge or play the computer. Arrange the five treasures in the hidden order. You have four tries."}
         />
         <View style={styles.treasureSplitLayout}>
           <View style={styles.treasureControlPanel}>
@@ -2602,16 +2619,6 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
                 )}
               </View>
             )}
-            <TextInput
-              accessibilityLabel="Treasure note"
-              multiline
-              onChangeText={setTreasureNote}
-              placeholder="Optional note that comes out of the chest"
-              placeholderTextColor="#9A93AA"
-              style={styles.journalInput}
-              textAlignVertical="top"
-              value={treasureNote}
-            />
             {friendInviteStatus ? <Text style={styles.inviteStatus}>{friendInviteStatus}</Text> : null}
           </View>
         )}
@@ -2660,23 +2667,31 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
               )}
               <Text style={styles.treasureChestText}>
                 {treasureStarted
-                  ? opponent === "friend"
-                    ? "Tap five treasures into your order, then submit those tiles for your friend to answer."
-                    : `${treasureTriesLeft} ${treasureTriesLeft === 1 ? "try" : "tries"} left. Tap treasures into the boxes below.`
+                  ? invitedTreasureSender
+                    ? `You are answering ${invitedTreasureSender}'s hidden treasure order. You have ${treasureTriesLeft} ${treasureTriesLeft === 1 ? "try" : "tries"} left.`
+                    : opponent === "friend"
+                      ? "Tap five treasures into your order, then submit those tiles for your friend to answer."
+                      : `${treasureTriesLeft} ${treasureTriesLeft === 1 ? "try" : "tries"} left. Tap treasures into the boxes below.`
                   : opponent === "friend"
                     ? "Create a standalone Treasure Chest challenge for a friend, or try the flow here first."
                     : "The computer will hide the order for you to solve."}
               </Text>
-              {treasureWon && (
-                <Text style={styles.treasureNoteText}>
-                  {treasureInspirationMessage}
-                </Text>
-              )}
             </View>
+            {treasureWon && (
+              <View style={styles.treasureFriendMessageCard}>
+                <View style={styles.treasureFriendMessageHeader}>
+                  <Ionicons color="#6544B8" name="chatbubble-ellipses-outline" size={20} />
+                  <Text style={styles.treasureFriendMessageTitle}>
+                    {invitedTreasureSender ? `${invitedTreasureSender}'s message` : opponent === "friend" ? "Message for your friend" : "Treasure message"}
+                  </Text>
+                </View>
+                <Text style={styles.treasureNoteText}>{treasureInspirationMessage}</Text>
+              </View>
+            )}
           </View>
         </View>
         <Text style={styles.prototypeNote}>
-          Treasure Chest is Challenge 1. Live friend links and messaging can be connected next.
+          Treasure Chest is Challenge 1. Invited friends can play from the email link without creating an account.
         </Text>
       </View>
     );
@@ -4419,6 +4434,35 @@ function getAppOrigin() {
   return browserWindow?.location?.origin || "https://intuisity.com";
 }
 
+function getTreasureInviteUrl(icons: Array<string | null>, note: string, senderName: string) {
+  const params = new URLSearchParams();
+  params.set("treasureInvite", "1");
+  params.set("tiles", icons.filter(Boolean).join("|"));
+  if (note.trim()) params.set("note", note.trim());
+  if (senderName.trim()) params.set("from", senderName.trim());
+  return `${getAppOrigin()}/?${params.toString()}`;
+}
+
+function loadTreasureInviteFromUrl() {
+  const browserWindow = typeof globalThis !== "undefined" ? (globalThis as any).window : undefined;
+  const params = new URLSearchParams(browserWindow?.location?.search || "");
+  if (params.get("treasureInvite") !== "1") return null;
+
+  const icons = String(params.get("tiles") || "")
+    .split("|")
+    .map((icon) => icon.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  if (icons.length !== 5) return null;
+
+  return {
+    icons,
+    note: String(params.get("note") || "").trim(),
+    senderName: String(params.get("from") || "Your friend").trim() || "Your friend"
+  };
+}
+
 function getKnowingResultMessage(score: number) {
   const messages = [
     {
@@ -5218,12 +5262,18 @@ const styles = StyleSheet.create({
   treasureChestTitle: { color: "#30264C", fontSize: 17, fontWeight: "900", marginTop: 6, textAlign: "center" },
   treasurePointsText: { color: "#008A94", fontSize: 14, fontWeight: "900", marginTop: 6, textAlign: "center" },
   treasureChestText: { color: "#5D536A", fontSize: 14, fontWeight: "800", lineHeight: 21, marginTop: 6, textAlign: "center" },
-  treasureNoteText: { color: "#008A94", fontSize: 18, fontWeight: "900", lineHeight: 24, marginTop: 12, textAlign: "center" },
+  treasureFriendMessageCard: { backgroundColor: "#FFFFFF", borderColor: "#63E3E0", borderRadius: 8, borderWidth: 2, marginTop: 10, padding: 14 },
+  treasureFriendMessageHeader: { alignItems: "center", flexDirection: "row", gap: 8, justifyContent: "center", marginBottom: 8 },
+  treasureFriendMessageTitle: { color: "#6544B8", fontSize: 14, fontWeight: "900", textAlign: "center" },
+  treasureNoteText: { color: "#008A94", fontSize: 18, fontWeight: "900", lineHeight: 25, textAlign: "center" },
   treasureTokenGrid: { flexDirection: "row", gap: 8, justifyContent: "center", marginBottom: 14 },
   treasureToken: { alignItems: "center", backgroundColor: "#EDFBFB", borderColor: "#00AEBB", borderRadius: 8, borderWidth: 2, cursor: "grab" as any, flex: 1, minHeight: 66, justifyContent: "center" },
   treasureTokenSelected: { backgroundColor: "#FFF9E8", borderColor: "#F4B740", borderWidth: 3, shadowColor: "#F4B740", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 10 },
   treasureTokenDisabled: { opacity: 0.16 },
   treasureTokenText: { color: "#30264C", fontSize: 28, fontWeight: "900" },
+  treasureMessageCard: { backgroundColor: "#F2FAFA", borderColor: "#BFE8E8", borderRadius: 8, borderWidth: 2, marginBottom: 14, padding: 12 },
+  treasureMessageLabel: { color: "#6544B8", fontSize: 13, fontWeight: "900", marginBottom: 7 },
+  treasureMessageInput: { backgroundColor: "#FFFFFF", borderColor: "#BFE8E8", borderRadius: 8, borderWidth: 1, color: "#30264C", fontSize: 14, fontWeight: "700", lineHeight: 20, minHeight: 84, padding: 12 },
   treasurePlacementHint: { color: "#8A6B20", fontSize: 12, fontWeight: "900", lineHeight: 17, marginBottom: 12, textAlign: "center" },
   treasureAttemptList: { gap: 8, marginBottom: 18 },
   treasureAttemptBlock: { gap: 5 },

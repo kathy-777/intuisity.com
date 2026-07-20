@@ -7,7 +7,7 @@ import { dailyIntuitionLessons } from "../data/dailyLessons";
 import { PersonProfile, personProfiles } from "../data/personProfiles";
 import { recordModuleTime, startActivityTracking } from "../services/adminAnalytics";
 import { lookupBirthLocation, sendFriendInviteEmail, syncDailyResult, syncFriends, syncModuleFeedback } from "../services/backendApi";
-import { UserProfile } from "../types/userProfile";
+import { BirthChartProfile, UserProfile } from "../types/userProfile";
 
 type Answers = Record<string, string>;
 
@@ -393,10 +393,7 @@ const treasureBaseGamePieces = [
   "🧩", "🎯", "🏹", "🛡️", "⚜️", "🔱", "⚖️", "🪬", "🕊️", "🦋",
   "🐝", "🐞", "🐢", "🦉", "🦚"
 ];
-const treasureGamePieceMarks = ["", "✦", "◇", "✧"];
-const treasureGamePieceCatalog = treasureBaseGamePieces.flatMap((piece) =>
-  treasureGamePieceMarks.map((mark) => `${piece}${mark}`)
-);
+const treasureGamePieceCatalog = treasureBaseGamePieces;
 
 const treasureWinOpeners = [
   "Fantastic",
@@ -614,6 +611,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
   const [treasureWinText, setTreasureWinText] = useState("");
   const [treasureNote, setTreasureNote] = useState("");
   const [treasureSceneImage, setTreasureSceneImage] = useState(() => treasureSceneImages[0]);
+  const [invitedTreasureSender, setInvitedTreasureSender] = useState("");
   const [selectedTreasureDrag, setSelectedTreasureDrag] = useState<TreasureDragItem | null>(null);
   const treasurePointerDragRef = useRef<TreasureDragItem | null>(null);
   const treasureIgnoreClickRef = useRef(false);
@@ -653,6 +651,25 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
     setPage("hub");
   }, [homeRequestId]);
 
+  useEffect(() => {
+    const invite = loadTreasureInviteFromUrl();
+    if (!invite) return;
+    setPage("social-prediction");
+    setOpponent("computer");
+    setTreasureFlowStep("play");
+    setTreasureIcons(invite.icons);
+    setTreasureSecret(invite.icons);
+    setTreasureGuess(Array(5).fill(null));
+    setTreasureAttemptRows([]);
+    setTreasureLocked(Array(5).fill(false));
+    setTreasureTriesLeft(4);
+    setTreasureWinText("");
+    setTreasureNote(invite.note);
+    setInvitedTreasureSender(invite.senderName);
+    setTreasureSceneImage(shuffle(treasureSceneImages)[0]);
+    setComputerResult(false);
+  }, []);
+
   const updateBirthDetail = (field: keyof typeof birthDetails, value: string) => {
     setBirthDetails({ ...birthDetails, [field]: value });
     setBirthDetailsSaved(false);
@@ -680,6 +697,28 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
     } else if (birthDetails.birthCity.trim()) {
       setBirthLocationStatus("Birth details saved. Today's reading will use the strongest guidance available from what you entered, and you can refine the birthplace later if needed.");
     }
+    const nextAstrologyReading = getAstrologyReading(
+      birthDetails.birthdate.trim(),
+      new Date(),
+      birthDetails.birthTime.trim(),
+      nextBirthLocation,
+      resolvedLocation
+    );
+    const nextBirthChart: BirthChartProfile | undefined = nextAstrologyReading
+      ? {
+          calculationType: nextAstrologyReading.chartCalculation as BirthChartProfile["calculationType"],
+          source: nextAstrologyReading.fullChart?.source || "Intuisity Sun Sign Daily",
+          houseSystem: nextAstrologyReading.fullChart?.houseSystem || "",
+          zodiac: nextAstrologyReading.fullChart?.zodiac || "Tropical",
+          locationLabel: nextAstrologyReading.fullChart?.locationLabel || resolvedLocation?.label || nextBirthLocation,
+          sunSign: nextAstrologyReading.fullChart?.sunSign || nextAstrologyReading.sign.name,
+          moonSign: nextAstrologyReading.fullChart?.moonSign || "",
+          risingSign: nextAstrologyReading.fullChart?.risingSign || "",
+          midheavenSign: nextAstrologyReading.fullChart?.midheavenSign || "",
+          strongestAspect: nextAstrologyReading.fullChart?.strongestAspect || null,
+          updatedAt: new Date().toISOString()
+        }
+      : undefined;
     onUpdateProfile({
       ...userProfile,
       birthdate: birthDetails.birthdate.trim(),
@@ -689,7 +728,8 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
       birthCountry: birthDetails.birthCountry.trim(),
       birthLatitude: resolvedLocation?.latitude,
       birthLongitude: resolvedLocation?.longitude,
-      birthLocationLabel: resolvedLocation?.label
+      birthLocationLabel: resolvedLocation?.label,
+      birthChart: nextBirthChart
     });
     setBirthDetailsSaved(true);
     setBirthDetailsOpen(!nextBirthDetailsComplete);
@@ -733,19 +773,19 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
     const phoneDigits = phone.replace(/\D/g, "");
     if (!name) {
       setFriendPhoneError("Please enter your friend's name.");
-      return;
+      return null;
     }
     if (!phoneDigits && !email) {
       setFriendPhoneError("Please enter a phone number or email address.");
-      return;
+      return null;
     }
     if (phoneDigits && phoneDigits.length !== 10) {
       setFriendPhoneError("Please enter a valid 10-digit phone number.");
-      return;
+      return null;
     }
     if (email && !isValidEmail(email)) {
       setFriendPhoneError("Please enter a valid friend email address.");
-      return;
+      return null;
     }
     const contact: FriendContact = { name, phone: phoneDigits ? phone : "", email };
     const contactKey = getFriendKey(contact);
@@ -761,6 +801,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
     setFriendPhone("");
     setFriendEmail("");
     setFriendPhoneError("");
+    return { contactKey, nextSaved, nextSelected };
   };
 
   const previousPage = getPreviousModulePage(page);
@@ -1322,7 +1363,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
               }
               setPersonPortraitLoading(false);
             }}
-            resizeMode="cover"
+            resizeMode="contain"
             source={personPortraitSource}
             style={styles.personPortrait}
           />
@@ -1775,11 +1816,12 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
     const treasureStarted = treasureSecret.length === 5;
     const treasureCorrect = treasureLocked.filter(Boolean).length;
     const treasureUsed = treasureGuess.filter(Boolean);
+    const treasureMissingCount = treasureGuess.filter((icon) => !icon).length;
     const treasureLost = treasureWinText.startsWith("The treasure");
     const treasureFriendSubmitted = treasureWinText.startsWith("Your treasure tiles");
     const treasureWon = Boolean(treasureWinText) && !treasureLost && !treasureFriendSubmitted;
     const treasureInspirationMessage =
-      opponent === "friend" && treasureNote.trim()
+      (opponent === "friend" || invitedTreasureSender) && treasureNote.trim()
         ? treasureNote.trim()
         : "You are bright, brave, and guided.";
     const treasureInspirationWords = treasureInspirationMessage.split(/\s+/).filter(Boolean);
@@ -1791,10 +1833,16 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
       treasureLost && styles.treasureSceneLost
     ];
     const chooseTreasureMode = (mode: "friend" | "computer") => {
+      if (mode === "friend" && userProfile.authProvider === "guest") {
+        setFriendPhoneError("Please create or sign in to your Intuisity account before inviting your own friends.");
+        onLogout();
+        return;
+      }
       setOpponent(mode);
       setFriendPhoneError("");
       setFriendInviteStatus("");
       setTreasureWinText("");
+      setInvitedTreasureSender("");
       if (mode === "friend") {
         setTreasureSecret([]);
         setTreasureGuess(Array(5).fill(null));
@@ -1810,21 +1858,25 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
     const addTreasureFriend = () => {
       if (!friendName.trim()) {
         setFriendPhoneError("Please enter your friend's name.");
-        return;
+        return null;
       }
       if (!friendEmail.trim()) {
         setFriendPhoneError("Please enter your friend's email address.");
-        return;
+        return null;
       }
-      addFriendPhone();
+      return addFriendPhone();
     };
-    const startTreasureChallenge = (mode: "friend" | "computer") => {
-      if (mode === "friend" && selectedFriendPhones.length === 0) {
+    const startTreasureChallenge = (
+      mode: "friend" | "computer",
+      friendKeys = selectedFriendPhones,
+      friendList = savedFriends
+    ) => {
+      if (mode === "friend" && friendKeys.length === 0) {
         setFriendPhoneError("Select or add at least one friend with an email address.");
         return;
       }
       if (mode === "friend") {
-        const selectedFriends = savedFriends.filter((friend) => selectedFriendPhones.includes(getFriendKey(friend)));
+        const selectedFriends = friendList.filter((friend) => friendKeys.includes(getFriendKey(friend)));
         const missingEmail = selectedFriends.some((friend) => !friend.email);
         if (missingEmail) {
           setFriendPhoneError("Friend challenges require an email. Phone number is optional.");
@@ -1845,6 +1897,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
       setSelectedTreasureDrag(null);
       setTreasureSceneImage(shuffle(treasureSceneImages)[0]);
       setOpponent(mode);
+      setInvitedTreasureSender("");
       setTreasureFlowStep("play");
       setComputerResult(false);
       setAnswers((current) => {
@@ -1854,6 +1907,11 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
         delete next["friend-maximum"];
         return next;
       });
+    };
+    const saveTreasureFriendAndContinue = () => {
+      const saved = addTreasureFriend();
+      if (!saved) return;
+      startTreasureChallenge("friend", saved.nextSelected, saved.nextSaved);
     };
     const placeTreasureIcon = (drag: TreasureDragItem, targetIndex: number) => {
       if (treasureLocked[targetIndex]) return;
@@ -1963,14 +2021,14 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
         setTreasureWinText("Your treasure tiles were submitted. Your friend will be invited to answer your game.");
         setFriendInviteStatus("Sending friend challenge invite...");
         Promise.all(selectedFriends.map((friend) => sendFriendInviteEmail({
-          challengeUrl: getAppOrigin(),
+          challengeUrl: getTreasureInviteUrl(submittedGuess, treasureNote.trim(), userProfile.name || "A friend"),
           friendEmail: friend.email || "",
           friendName: friend.name,
-          note: `Treasure tiles: ${submittedGuess.join(" ")}${treasureNote.trim() ? `\n\n${treasureNote.trim()}` : ""}`,
+          note: treasureNote.trim(),
           senderName: userProfile.name || "A friend"
         })))
           .then(() => setFriendInviteStatus(`Challenge sent to ${selectedFriends.length} ${selectedFriends.length === 1 ? "friend" : "friends"}. When a friend sends you their tiles, you will get a notification to answer their game.`))
-          .catch(() => setFriendInviteStatus("Your tiles were saved here, but the email invite could not be sent yet. Check Resend and Vercel settings."));
+          .catch((error) => setFriendInviteStatus(`Your tiles were saved here, but the email invite could not be sent yet. ${error instanceof Error ? error.message : "Check Resend and Vercel settings."}`));
         return;
       }
       const nextTriesLeft = Math.max(0, treasureTriesLeft - 1);
@@ -2122,8 +2180,8 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
       if (typeof (globalThis as any).document !== "undefined") {
         const webTokenStyle = (disabled: boolean, active: boolean): any => ({
           alignItems: "center",
-          background: active ? "#FFF9E8" : "#FFFFFF",
-          border: active ? "2px solid #F4B740" : "1px solid #DCCFF5",
+          background: active ? "#FFF9E8" : "#EDFBFB",
+          border: active ? "3px solid #F4B740" : "2px solid #00AEBB",
           borderRadius: 8,
           color: "#30264C",
           cursor: disabled ? "default" : "grab",
@@ -2132,24 +2190,24 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
           fontSize: 28,
           fontWeight: 900,
           justifyContent: "center",
-          minHeight: 58,
-          opacity: disabled ? 0.28 : 1,
+          minHeight: 66,
+          opacity: disabled ? 0.16 : 1,
           touchAction: "none",
           userSelect: "none"
         });
-        const webSlotStyle = (locked: boolean, active: boolean): any => ({
+        const webSlotStyle = (locked: boolean, active: boolean, empty = false): any => ({
           alignItems: "center",
-          background: locked ? "#EDFFF6" : active ? "#FFFDF5" : "#FFFFFF",
-          border: locked ? "2px solid #43C987" : active ? "2px dashed #F4B740" : "2px dashed #DAD3E8",
+          background: locked ? "#EDFFF6" : active || empty ? "#FFF9E8" : "#FFFFFF",
+          border: locked ? "2px solid #43C987" : active || empty ? "3px dashed #F4B740" : "2px dashed #DAD3E8",
           borderRadius: 8,
-          color: "#30264C",
+          color: empty ? "#8A6B20" : "#30264C",
           cursor: locked ? "default" : "grab",
           display: "flex",
           flex: 1,
-          fontSize: 28,
+          fontSize: empty ? 12 : 28,
           fontWeight: 900,
           justifyContent: "center",
-          minHeight: 58,
+          minHeight: 66,
           touchAction: "none",
           userSelect: "none"
         });
@@ -2175,7 +2233,43 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
             onPointerUp: finishTreasurePointerDrag,
             style: { overflow: "visible", paddingBottom: 18, touchAction: "pan-y" }
           },
-          React.createElement("div", { style: { color: "#706982", fontSize: 12, fontWeight: 900, marginBottom: 8, textTransform: "uppercase" } }, "Available treasures"),
+          React.createElement("div", { style: { color: "#706982", fontSize: 12, fontWeight: 900, marginBottom: 8, textTransform: "uppercase" } }, opponent === "friend" ? "Step 1: Your five empty boxes" : "Your order"),
+          React.createElement(
+            "div",
+            { style: { display: "flex", gap: 8, justifyContent: "center", marginBottom: 12 } },
+            treasureGuess.map((icon, index) => {
+              const active = treasureDropSlot === index;
+              return React.createElement(
+                "div",
+                {
+                  "data-treasure-slot-index": index,
+                  draggable: false,
+                  key: `treasure-top-slot-${index}`,
+                  onClick: () => icon && tapTreasureIcon({ icon, from: "slot", index }),
+                  onDragEnter: () => !treasureLocked[index] && setTreasureDropSlot(index),
+                  onDragLeave: () => setTreasureDropSlot((current) => current === index ? null : current),
+                  onDragOver: (event: any) => {
+                    if (!treasureLocked[index]) {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      setTreasureDropSlot(index);
+                    }
+                  },
+                  onDrop: (event: any) => {
+                    event.preventDefault();
+                    const drag = readTreasureDrag(event);
+                    if (drag) placeTreasureIcon(drag, index);
+                    setTreasureDropSlot(null);
+                  },
+                  onPointerDown: (event: any) => icon && !treasureLocked[index] && startTreasurePointerDrag(event, { icon, from: "slot", index }),
+                  style: webSlotStyle(treasureLocked[index], active, !icon)
+                },
+                icon || "Empty"
+              );
+            })
+          ),
+          React.createElement("div", { style: { color: "#8A6B20", fontSize: 12, fontWeight: 900, lineHeight: "17px", marginBottom: 12, textAlign: "center" } }, opponent === "friend" ? "Tap a treasure below and it will fill the next empty box above." : "Tap treasures into the boxes above, or drag them into place."),
+          React.createElement("div", { style: { color: "#706982", fontSize: 12, fontWeight: 900, marginBottom: 8, textTransform: "uppercase" } }, opponent === "friend" ? "Step 2: Tap treasures to fill the boxes" : "Available treasures"),
           React.createElement(
             "div",
             { style: { display: "flex", gap: 8, justifyContent: "center", marginBottom: 14 } },
@@ -2196,7 +2290,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
               );
             })
           ),
-          React.createElement("div", { style: { color: "#8A6B20", fontSize: 12, fontWeight: 900, lineHeight: "17px", marginBottom: 12, textAlign: "center" } }, opponent === "friend" ? "Arrange your five treasure tiles, then submit them for your friend to answer." : "Drag treasures into the boxes below, or tap a treasure to place it in the next open box."),
+          React.createElement("div", { style: { color: "#8A6B20", fontSize: 12, fontWeight: 900, lineHeight: "17px", marginBottom: 12, textAlign: "center" } }, opponent === "friend" ? "Tap five treasures below. Your chosen order appears in the boxes, then the submit button will turn purple." : "Drag treasures into the boxes below, or tap a treasure to place it in the next open box."),
           treasureAttemptRows.length > 0 && React.createElement(
             "div",
             { style: { display: "grid", gap: 8, marginBottom: 12 } },
@@ -2210,53 +2304,43 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
                 row.map((icon, index) => React.createElement(
                   "div",
                   { key: `treasure-attempt-${rowIndex}-${index}`, style: webPastSlotStyle(icon === treasureSecret[index]) },
-                  icon || "+"
+                  icon || "Empty"
                 ))
               )
             ))
           ),
-          React.createElement("div", { style: { color: "#706982", fontSize: 12, fontWeight: 900, marginBottom: 8, textTransform: "uppercase" } }, "Your order"),
-          React.createElement(
-            "div",
-            { style: { display: "flex", gap: 8, justifyContent: "center", marginBottom: 14 } },
-            treasureGuess.map((icon, index) => {
-              const active = treasureDropSlot === index;
-              return React.createElement(
-                "div",
-                {
-                  "data-treasure-slot-index": index,
-                  draggable: false,
-                  key: `treasure-slot-${index}`,
-                  onClick: () => icon && tapTreasureIcon({ icon, from: "slot", index }),
-                  onDragEnter: () => !treasureLocked[index] && setTreasureDropSlot(index),
-                  onDragLeave: () => setTreasureDropSlot((current) => current === index ? null : current),
-                  onDragOver: (event: any) => {
-                    if (!treasureLocked[index]) {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                      setTreasureDropSlot(index);
-                    }
-                  },
-                  onDragStart: (event: any) => {
-                    event.preventDefault();
-                  },
-                  onDrop: (event: any) => {
-                    event.preventDefault();
-                    const drag = readTreasureDrag(event);
-                    if (drag) placeTreasureIcon(drag, index);
-                    setTreasureDropSlot(null);
-                  },
-                  onPointerDown: (event: any) => icon && !treasureLocked[index] && startTreasurePointerDrag(event, { icon, from: "slot", index }),
-                  style: webSlotStyle(treasureLocked[index], active)
-                },
-                icon || "+"
-              );
-            })
+          opponent === "friend" && React.createElement(
+            "label",
+            { style: { color: "#6544B8", display: "block", fontSize: 13, fontWeight: 900, marginBottom: 7 } },
+            "Message to your friend"
+          ),
+          opponent === "friend" && React.createElement(
+            "textarea",
+            {
+              onChange: (event: any) => setTreasureNote(event.target.value),
+              placeholder: "Write a short message that appears when your friend opens the chest.",
+              style: {
+                background: "#FFFFFF",
+                border: "2px solid #BFE8E8",
+                borderRadius: 8,
+                color: "#30264C",
+                fontFamily: "inherit",
+                fontSize: 14,
+                fontWeight: 700,
+                lineHeight: "20px",
+                marginBottom: 12,
+                minHeight: 84,
+                padding: 12,
+                resize: "vertical",
+                width: "100%"
+              },
+              value: treasureNote
+            }
           ),
           React.createElement(
             "button",
             {
-              disabled: treasureGuess.some((icon) => !icon),
+              disabled: treasureMissingCount > 0,
               onClick: submitTreasureGuess,
               onPointerDown: () => {
                 treasurePointerDragRef.current = null;
@@ -2265,11 +2349,11 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
               },
               style: {
                 alignItems: "center",
-                background: treasureGuess.some((icon) => !icon) ? "#CFC8DA" : "#7555C7",
+                background: treasureMissingCount > 0 ? "#CFC8DA" : "#7555C7",
                 border: 0,
                 borderRadius: 8,
                 color: "#FFFFFF",
-                cursor: treasureGuess.some((icon) => !icon) ? "default" : "pointer",
+                cursor: treasureMissingCount > 0 ? "default" : "pointer",
                 display: "flex",
                 fontSize: 15,
                 fontWeight: 900,
@@ -2280,13 +2364,40 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
                 width: "100%"
               }
             },
-            opponent === "friend" ? "Submit my tiles" : "Try unlocking"
+            opponent === "friend"
+              ? treasureMissingCount > 0
+                ? `Choose ${treasureMissingCount} more ${treasureMissingCount === 1 ? "tile" : "tiles"}`
+                : "Lock in my tiles and send"
+              : treasureMissingCount > 0
+                ? `Choose ${treasureMissingCount} more`
+                : "Try unlocking"
           )
         );
       }
       return (
         <View>
-          <Text style={styles.selectionCount}>Available treasures</Text>
+          <Text style={styles.selectionCount}>{opponent === "friend" ? "Step 1: Your five empty boxes" : "Your order"}</Text>
+          <View style={styles.treasureSlotRow}>
+            {treasureGuess.map((icon, index) => (
+              <Pressable
+                key={`treasure-top-slot-${index}`}
+                onPress={() => icon && tapTreasureIcon({ icon, from: "slot", index })}
+                style={[
+                  styles.treasureSlot,
+                  !icon && styles.treasureSlotEmpty,
+                  treasureLocked[index] && styles.treasureSlotCorrect
+                ]}
+              >
+                <Text style={[styles.treasureTokenText, !icon && styles.treasureEmptySlotText]}>{icon || "Empty"}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.treasurePlacementHint}>
+            {opponent === "friend"
+              ? "Tap a treasure below and it will fill the next empty box above."
+              : "Tap treasures into the boxes above, or drag them into place."}
+          </Text>
+          <Text style={styles.selectionCount}>{opponent === "friend" ? "Step 2: Tap treasures to fill the boxes" : "Available treasures"}</Text>
           <View style={styles.treasureTokenGrid}>
             {treasureIcons.map((icon) => {
               const disabled = treasureUsed.includes(icon);
@@ -2304,7 +2415,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
           </View>
           <Text style={styles.treasurePlacementHint}>
             {opponent === "friend"
-              ? "Arrange your five treasure tiles, then submit them for your friend to answer."
+              ? "Tap five treasures below. Your chosen order appears in the boxes, then the submit button will turn purple."
               : "Drag treasures into the boxes below, or tap a treasure to place it in the next open box."}
           </Text>
           {treasureAttemptRows.length > 0 && (
@@ -2323,7 +2434,7 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
                             correct && styles.treasurePastSlotCorrect
                           ]}
                         >
-                          <Text style={styles.treasurePastSlotText}>{icon || "+"}</Text>
+                          <Text style={styles.treasurePastSlotText}>{icon || "Empty"}</Text>
                         </View>
                       );
                     })}
@@ -2332,28 +2443,36 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
               ))}
             </View>
           )}
-          <Text style={styles.selectionCount}>Your order</Text>
-          <View style={styles.treasureSlotRow}>
-            {treasureGuess.map((icon, index) => (
-                <Pressable
-                  key={`treasure-slot-${index}`}
-                  onPress={() => icon && tapTreasureIcon({ icon, from: "slot", index })}
-                  style={[
-                    styles.treasureSlot,
-                    treasureLocked[index] && styles.treasureSlotCorrect
-                  ]}
-                >
-                  <Text style={styles.treasureTokenText}>{icon || "+"}</Text>
-                </Pressable>
-            ))}
-          </View>
+          {opponent === "friend" && (
+            <View style={styles.treasureMessageCard}>
+              <Text style={styles.treasureMessageLabel}>Message to your friend</Text>
+              <TextInput
+                accessibilityLabel="Message to friend"
+                multiline
+                onChangeText={setTreasureNote}
+                placeholder="Write a short message that appears when your friend opens the chest."
+                placeholderTextColor="#9A93AA"
+                style={styles.treasureMessageInput}
+                textAlignVertical="top"
+                value={treasureNote}
+              />
+            </View>
+          )}
           <Pressable
-            disabled={treasureGuess.some((icon) => !icon)}
+            disabled={treasureMissingCount > 0}
             onPress={submitTreasureGuess}
-            style={[styles.primaryButton, treasureGuess.some((icon) => !icon) && styles.disabledButton]}
+            style={[styles.primaryButton, treasureMissingCount > 0 && styles.disabledButton]}
           >
             <Ionicons color="#FFFFFF" name={opponent === "friend" ? "send-outline" : "key-outline"} size={18} />
-            <Text style={styles.primaryButtonText}>{opponent === "friend" ? "Submit my tiles" : "Try unlocking"}</Text>
+            <Text style={styles.primaryButtonText}>
+              {opponent === "friend"
+                ? treasureMissingCount > 0
+                  ? `Choose ${treasureMissingCount} more ${treasureMissingCount === 1 ? "tile" : "tiles"}`
+                  : "Lock in my tiles and send"
+                : treasureMissingCount > 0
+                  ? `Choose ${treasureMissingCount} more`
+                  : "Try unlocking"}
+            </Text>
           </Pressable>
         </View>
       );
@@ -2363,8 +2482,8 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
       <View>
         <ChallengePageHeader
           eyebrow="Challenge 1 · Treasure Chest"
-          title="Treasure Chest"
-          subtitle="Try a friend's treasure challenge or play the computer. Arrange the five treasures in the hidden order. You have four tries."
+          title={invitedTreasureSender ? `${invitedTreasureSender}'s Treasure Chest` : "Treasure Chest"}
+          subtitle={invitedTreasureSender ? "Your friend hid five treasures. Guess the order in four tries, then create an account if you want to invite friends too." : "Try a friend's treasure challenge or play the computer. Arrange the five treasures in the hidden order. You have four tries."}
         />
         <View style={styles.treasureSplitLayout}>
           <View style={styles.treasureControlPanel}>
@@ -2421,29 +2540,18 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
               style={styles.birthdateInput}
               value={friendName}
             />
-            <View style={styles.friendPhoneRow}>
-              <TextInput
-                accessibilityLabel="Friend phone number"
-                keyboardType="phone-pad"
-                onChangeText={(value) => {
-                  setFriendPhone(formatFriendPhone(value));
-                  setFriendPhoneError("");
-                }}
-                onSubmitEditing={addFriendPhone}
-                placeholder="(555) 555-5555"
-                placeholderTextColor="#9A93AA"
-                style={[styles.birthdateInput, styles.friendPhoneInput]}
-                value={friendPhone}
-              />
-              <Pressable
-                accessibilityLabel="Add friend"
-                disabled={!friendName.trim() || !friendEmail.trim()}
-                onPress={addTreasureFriend}
-                style={[styles.addFriendButton, (!friendName.trim() || !friendEmail.trim()) && styles.disabledButton]}
-              >
-                <Ionicons color="#FFFFFF" name="add" size={24} />
-              </Pressable>
-            </View>
+            <TextInput
+              accessibilityLabel="Friend phone number"
+              keyboardType="phone-pad"
+              onChangeText={(value) => {
+                setFriendPhone(formatFriendPhone(value));
+                setFriendPhoneError("");
+              }}
+              placeholder="Phone number optional"
+              placeholderTextColor="#9A93AA"
+              style={styles.birthdateInput}
+              value={friendPhone}
+            />
             <TextInput
               accessibilityLabel="Friend email address"
               autoCapitalize="none"
@@ -2459,6 +2567,15 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
             />
             <Text style={styles.savedFriendsLabel}>Email is required so they can receive the challenge. Phone number is optional.</Text>
             {friendPhoneError ? <Text style={styles.inputError}>{friendPhoneError}</Text> : null}
+            <Pressable
+              accessibilityLabel="Save friend and continue to treasure tiles"
+              disabled={!friendName.trim() || !friendEmail.trim()}
+              onPress={saveTreasureFriendAndContinue}
+              style={[styles.primaryButton, (!friendName.trim() || !friendEmail.trim()) && styles.disabledButton]}
+            >
+              <Ionicons color="#FFFFFF" name="arrow-forward-outline" size={18} />
+              <Text style={styles.primaryButtonText}>Next: save friend and choose my tiles</Text>
+            </Pressable>
             {savedFriends.length > 0 && (
               <View>
                 <Text style={styles.savedFriendsLabel}>Saved friends · tap to select</Text>
@@ -2502,27 +2619,21 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
                 )}
               </View>
             )}
-            <TextInput
-              accessibilityLabel="Treasure note"
-              multiline
-              onChangeText={setTreasureNote}
-              placeholder="Optional note that comes out of the chest"
-              placeholderTextColor="#9A93AA"
-              style={styles.journalInput}
-              textAlignVertical="top"
-              value={treasureNote}
-            />
             {friendInviteStatus ? <Text style={styles.inviteStatus}>{friendInviteStatus}</Text> : null}
           </View>
         )}
         {treasureFlowStep === "choose" ? null : !treasureStarted || treasureWinText ? (
           <Pressable
+            disabled={opponent === "friend" && selectedFriendPhones.length === 0 && !treasureWinText}
             onPress={() => startTreasureChallenge(opponent)}
-            style={styles.primaryButton}
+            style={[
+              styles.primaryButton,
+              opponent === "friend" && selectedFriendPhones.length === 0 && !treasureWinText && styles.disabledButton
+            ]}
           >
             <Ionicons color="#FFFFFF" name={opponent === "friend" ? "send-outline" : "sparkles-outline"} size={18} />
             <Text style={styles.primaryButtonText}>
-              {treasureWinText ? "Play again" : opponent === "friend" ? "Continue to my tiles" : "Start computer game"}
+              {treasureWinText ? "Play again" : opponent === "friend" ? "Continue with selected friend" : "Start computer game"}
             </Text>
           </Pressable>
         ) : (
@@ -2556,21 +2667,31 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
               )}
               <Text style={styles.treasureChestText}>
                 {treasureStarted
-                  ? `${treasureTriesLeft} ${treasureTriesLeft === 1 ? "try" : "tries"} left. Tap treasures into the boxes below.`
+                  ? invitedTreasureSender
+                    ? `You are answering ${invitedTreasureSender}'s hidden treasure order. You have ${treasureTriesLeft} ${treasureTriesLeft === 1 ? "try" : "tries"} left.`
+                    : opponent === "friend"
+                      ? "Tap five treasures into your order, then submit those tiles for your friend to answer."
+                      : `${treasureTriesLeft} ${treasureTriesLeft === 1 ? "try" : "tries"} left. Tap treasures into the boxes below.`
                   : opponent === "friend"
                     ? "Create a standalone Treasure Chest challenge for a friend, or try the flow here first."
                     : "The computer will hide the order for you to solve."}
               </Text>
-              {treasureWon && (
-                <Text style={styles.treasureNoteText}>
-                  {treasureInspirationMessage}
-                </Text>
-              )}
             </View>
+            {treasureWon && (
+              <View style={styles.treasureFriendMessageCard}>
+                <View style={styles.treasureFriendMessageHeader}>
+                  <Ionicons color="#6544B8" name="chatbubble-ellipses-outline" size={20} />
+                  <Text style={styles.treasureFriendMessageTitle}>
+                    {invitedTreasureSender ? `${invitedTreasureSender}'s message` : opponent === "friend" ? "Message for your friend" : "Treasure message"}
+                  </Text>
+                </View>
+                <Text style={styles.treasureNoteText}>{treasureInspirationMessage}</Text>
+              </View>
+            )}
           </View>
         </View>
         <Text style={styles.prototypeNote}>
-          Treasure Chest is Challenge 1. Live friend links and messaging can be connected next.
+          Treasure Chest is Challenge 1. Invited friends can play from the email link without creating an account.
         </Text>
       </View>
     );
@@ -2939,11 +3060,11 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
             </View>
             <DrawingPad points={drawingPoints} setPoints={setDrawingPoints} />
             <View style={styles.drawingActions}>
-              <Pressable onPress={() => setDrawingPoints([])} style={styles.secondaryButton}>
+              <Pressable onPress={() => setDrawingPoints([])} style={[styles.secondaryButton, styles.drawingActionButton]}>
                 <Ionicons color="#FFFFFF" name="trash-outline" size={17} />
                 <Text style={styles.secondaryButtonText}>Clear drawing</Text>
               </Pressable>
-              <Pressable onPress={() => setRemotePhase("choose")} style={styles.primaryButton}>
+              <Pressable onPress={() => setRemotePhase("choose")} style={[styles.primaryButton, styles.drawingActionButton]}>
                 <Text style={styles.primaryButtonText}>Reveal two choices</Text>
                 <Ionicons color="#FFFFFF" name="arrow-forward-outline" size={18} />
               </Pressable>
@@ -2964,6 +3085,18 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
                 setRemotePhase("result");
               }}
             />
+            {remotePhase === "result" && (
+              <View style={[styles.message, styles.remoteResultCompact, selectedCorrectly && styles.remoteSuccess]}>
+                <Text style={[styles.messageTitle, styles.remoteResultTitleCompact]}>
+                  {selectedCorrectly ? "Great job!" : "Keep following your impressions"}
+                </Text>
+                <Text style={[styles.messageText, styles.remoteResultTextCompact]}>
+                  {selectedCorrectly
+                    ? "Your remote viewing impressions matched the hidden target."
+                  : `The hidden target was ${roundTarget.target.label}.`}
+                </Text>
+              </View>
+            )}
             {remotePhase === "result" && (
               <Pressable
                 onPress={() => {
@@ -2988,18 +3121,6 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
                 </Text>
                 <Ionicons color="#FFFFFF" name="arrow-forward-outline" size={18} />
               </Pressable>
-            )}
-            {remotePhase === "result" && (
-              <View style={[styles.message, styles.remoteResultCompact, selectedCorrectly && styles.remoteSuccess]}>
-                <Text style={[styles.messageTitle, styles.remoteResultTitleCompact]}>
-                  {selectedCorrectly ? "Great job!" : "Keep following your impressions"}
-                </Text>
-                <Text style={[styles.messageText, styles.remoteResultTextCompact]}>
-                  {selectedCorrectly
-                    ? "Your remote viewing impressions matched the hidden target."
-                  : `The hidden target was ${roundTarget.target.label}.`}
-                </Text>
-              </View>
             )}
           </View>
         )}
@@ -4313,6 +4434,35 @@ function getAppOrigin() {
   return browserWindow?.location?.origin || "https://intuisity.com";
 }
 
+function getTreasureInviteUrl(icons: Array<string | null>, note: string, senderName: string) {
+  const params = new URLSearchParams();
+  params.set("treasureInvite", "1");
+  params.set("tiles", icons.filter(Boolean).join("|"));
+  if (note.trim()) params.set("note", note.trim());
+  if (senderName.trim()) params.set("from", senderName.trim());
+  return `${getAppOrigin()}/?${params.toString()}`;
+}
+
+function loadTreasureInviteFromUrl() {
+  const browserWindow = typeof globalThis !== "undefined" ? (globalThis as any).window : undefined;
+  const params = new URLSearchParams(browserWindow?.location?.search || "");
+  if (params.get("treasureInvite") !== "1") return null;
+
+  const icons = String(params.get("tiles") || "")
+    .split("|")
+    .map((icon) => icon.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  if (icons.length !== 5) return null;
+
+  return {
+    icons,
+    note: String(params.get("note") || "").trim(),
+    senderName: String(params.get("from") || "Your friend").trim() || "Your friend"
+  };
+}
+
 function getKnowingResultMessage(score: number) {
   const messages = [
     {
@@ -4835,11 +4985,11 @@ const styles = StyleSheet.create({
   correctMessage: { backgroundColor: "#EDFFF6", borderColor: "#43C987" },
   messageTitle: { color: "#30264C", fontSize: 17, fontWeight: "900" },
   messageText: { color: "#706982", fontSize: 14, marginTop: 4 },
-  remoteResultCompact: { marginBottom: 6, marginTop: 4, padding: 8 },
-  remoteResultTitleCompact: { fontSize: 15 },
-  remoteResultTextCompact: { fontSize: 12, lineHeight: 16, marginTop: 2 },
-  remoteAnswerStage: { marginTop: 0 },
-  remoteNextButtonCompact: { marginBottom: 4, minHeight: 40, padding: 8 },
+  remoteResultCompact: { marginBottom: 5, marginTop: 0, padding: 7 },
+  remoteResultTitleCompact: { fontSize: 14 },
+  remoteResultTextCompact: { fontSize: 11, lineHeight: 15, marginTop: 1 },
+  remoteAnswerStage: { marginTop: 0, paddingBottom: 4 },
+  remoteNextButtonCompact: { marginBottom: 0, minHeight: 36, padding: 7 },
   choiceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
   choice: { backgroundColor: "#F8F7FC", borderColor: "#E4DFF0", borderRadius: 8, borderWidth: 1, minWidth: "47%", padding: 14 },
   selectedChoice: { backgroundColor: "#008A94", borderColor: "#00AEBB" },
@@ -4905,7 +5055,7 @@ const styles = StyleSheet.create({
   practiceText: { color: "#393149", fontSize: 14, lineHeight: 19 },
   loadingPanel: { alignItems: "center", backgroundColor: "#F8F5FF", borderColor: "#DCCFF5", borderRadius: 8, borderWidth: 1, gap: 12, marginBottom: 16, padding: 24 },
   loadingPanelText: { color: "#30264C", fontSize: 15, fontWeight: "800", textAlign: "center" },
-  personPortraitFrame: { alignSelf: "center", borderColor: "#E7E3F2", borderRadius: 8, borderWidth: 1, height: 300, marginBottom: 16, maxWidth: 360, overflow: "hidden", width: "100%" },
+  personPortraitFrame: { alignSelf: "center", backgroundColor: "#F8F7FC", borderColor: "#E7E3F2", borderRadius: 8, borderWidth: 1, height: 320, marginBottom: 16, maxWidth: 360, overflow: "hidden", width: "100%" },
   personPortrait: { height: "100%", width: "100%" },
   personHistory: { backgroundColor: "#EDFBFB", borderColor: "#BFE8E8", borderRadius: 8, borderWidth: 1, marginBottom: 16, padding: 16 },
   selectionCount: { color: "#6544B8", fontSize: 14, fontWeight: "900", marginBottom: 10 },
@@ -5022,10 +5172,10 @@ const styles = StyleSheet.create({
   roomFloor: { backgroundColor: "#F1EDFF", borderTopColor: "#DCCFF5", borderTopWidth: 1, bottom: 0, height: 48, left: 0, position: "absolute", right: 0 },
   pictureGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
   pictureGridCompact: { gap: 5, marginBottom: 7 },
-  remotePictureGridCompact: { gap: 7, marginBottom: 4 },
+  remotePictureGridCompact: { gap: 6, marginBottom: 5 },
   pictureChoice: { aspectRatio: 1.1, borderColor: "#E7E3F2", borderRadius: 8, borderWidth: 2, minWidth: "47%", overflow: "hidden", position: "relative" },
   pictureChoiceThreeColumn: { aspectRatio: 1.75, minWidth: 0, width: "31.8%" },
-  remotePictureChoiceCompact: { aspectRatio: 3.15 },
+  remotePictureChoiceCompact: { aspectRatio: 1.35 },
   pictureChoiceSelected: { backgroundColor: "#E9DFFF", borderColor: "#6A35D4", borderWidth: 6, elevation: 10, shadowColor: "#6A35D4", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 16 },
   pictureChoiceSelectedCompact: { borderWidth: 4, shadowRadius: 10 },
   pictureChoiceCorrect: { borderColor: "#18B86A", borderWidth: 5, shadowColor: "#18B86A", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.95, shadowRadius: 18 },
@@ -5112,19 +5262,27 @@ const styles = StyleSheet.create({
   treasureChestTitle: { color: "#30264C", fontSize: 17, fontWeight: "900", marginTop: 6, textAlign: "center" },
   treasurePointsText: { color: "#008A94", fontSize: 14, fontWeight: "900", marginTop: 6, textAlign: "center" },
   treasureChestText: { color: "#5D536A", fontSize: 14, fontWeight: "800", lineHeight: 21, marginTop: 6, textAlign: "center" },
-  treasureNoteText: { color: "#008A94", fontSize: 18, fontWeight: "900", lineHeight: 24, marginTop: 12, textAlign: "center" },
+  treasureFriendMessageCard: { backgroundColor: "#FFFFFF", borderColor: "#63E3E0", borderRadius: 8, borderWidth: 2, marginTop: 10, padding: 14 },
+  treasureFriendMessageHeader: { alignItems: "center", flexDirection: "row", gap: 8, justifyContent: "center", marginBottom: 8 },
+  treasureFriendMessageTitle: { color: "#6544B8", fontSize: 14, fontWeight: "900", textAlign: "center" },
+  treasureNoteText: { color: "#008A94", fontSize: 18, fontWeight: "900", lineHeight: 25, textAlign: "center" },
   treasureTokenGrid: { flexDirection: "row", gap: 8, justifyContent: "center", marginBottom: 14 },
-  treasureToken: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#DCCFF5", borderRadius: 8, borderWidth: 1, cursor: "grab" as any, flex: 1, minHeight: 58, justifyContent: "center" },
+  treasureToken: { alignItems: "center", backgroundColor: "#EDFBFB", borderColor: "#00AEBB", borderRadius: 8, borderWidth: 2, cursor: "grab" as any, flex: 1, minHeight: 66, justifyContent: "center" },
   treasureTokenSelected: { backgroundColor: "#FFF9E8", borderColor: "#F4B740", borderWidth: 3, shadowColor: "#F4B740", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 10 },
-  treasureTokenDisabled: { opacity: 0.28 },
+  treasureTokenDisabled: { opacity: 0.16 },
   treasureTokenText: { color: "#30264C", fontSize: 28, fontWeight: "900" },
+  treasureMessageCard: { backgroundColor: "#F2FAFA", borderColor: "#BFE8E8", borderRadius: 8, borderWidth: 2, marginBottom: 14, padding: 12 },
+  treasureMessageLabel: { color: "#6544B8", fontSize: 13, fontWeight: "900", marginBottom: 7 },
+  treasureMessageInput: { backgroundColor: "#FFFFFF", borderColor: "#BFE8E8", borderRadius: 8, borderWidth: 1, color: "#30264C", fontSize: 14, fontWeight: "700", lineHeight: 20, minHeight: 84, padding: 12 },
   treasurePlacementHint: { color: "#8A6B20", fontSize: 12, fontWeight: "900", lineHeight: 17, marginBottom: 12, textAlign: "center" },
   treasureAttemptList: { gap: 8, marginBottom: 18 },
   treasureAttemptBlock: { gap: 5 },
   treasureSlotRow: { flexDirection: "row", gap: 8, justifyContent: "center", marginBottom: 14 },
-  treasureSlot: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#DAD3E8", borderRadius: 8, borderStyle: "dashed", borderWidth: 2, cursor: "grab" as any, flex: 1, minHeight: 58, justifyContent: "center" },
+  treasureSlot: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#DAD3E8", borderRadius: 8, borderStyle: "dashed", borderWidth: 2, cursor: "grab" as any, flex: 1, minHeight: 66, justifyContent: "center" },
+  treasureSlotEmpty: { backgroundColor: "#FFF9E8", borderColor: "#F4B740", borderWidth: 3 },
   treasureSlotReady: { backgroundColor: "#FFFDF5", borderColor: "#F4B740" },
   treasureSlotCorrect: { backgroundColor: "#EDFFF6", borderColor: "#43C987", borderStyle: "solid" },
+  treasureEmptySlotText: { color: "#8A6B20", fontSize: 12 },
   treasurePastSlot: { alignItems: "center", backgroundColor: "#F8F7FC", borderColor: "#E7E3F2", borderRadius: 8, borderWidth: 1, flex: 1, minHeight: 44, justifyContent: "center", opacity: 0.72 },
   treasurePastSlotCorrect: { backgroundColor: "#EDFFF6", borderColor: "#43C987", borderWidth: 2, opacity: 1 },
   treasurePastSlotText: { color: "#8A8299", fontSize: 24, fontWeight: "900" },
@@ -5195,13 +5353,14 @@ const styles = StyleSheet.create({
   communityLabel: { color: "#706982", fontSize: 12, fontWeight: "700", marginTop: 4 },
   communityComparison: { backgroundColor: "#EDFBFB", borderColor: "#BFE8E8", borderRadius: 8, borderWidth: 1, marginBottom: 14, padding: 16 },
   communityComparisonTitle: { color: "#008A94", fontSize: 16, fontWeight: "900", marginBottom: 7 },
-  remoteInstructionCard: { alignItems: "flex-start", backgroundColor: "#F8F5FF", borderColor: "#DCCFF5", borderRadius: 8, borderWidth: 1, flexDirection: "row", gap: 9, marginBottom: 12, padding: 12 },
-  remoteInstructionText: { color: "#5D536A", flex: 1, fontSize: 13, fontWeight: "800", lineHeight: 19 },
-  drawingPad: { backgroundColor: "#FFFFFF", borderColor: "#C5E1F3", borderRadius: 8, borderWidth: 2, height: 330, marginBottom: 12, overflow: "hidden", position: "relative" },
+  remoteInstructionCard: { alignItems: "flex-start", backgroundColor: "#F8F5FF", borderColor: "#DCCFF5", borderRadius: 8, borderWidth: 1, flexDirection: "row", gap: 8, marginBottom: 8, padding: 9 },
+  remoteInstructionText: { color: "#5D536A", flex: 1, fontSize: 12, fontWeight: "800", lineHeight: 17 },
+  drawingPad: { backgroundColor: "#FFFFFF", borderColor: "#C5E1F3", borderRadius: 8, borderWidth: 2, height: 245, marginBottom: 8, overflow: "hidden", position: "relative" },
   drawingPrompt: { alignItems: "center", bottom: 0, justifyContent: "center", left: 0, opacity: 0.6, position: "absolute", right: 0, top: 0 },
   drawingPromptText: { color: "#8A8299", fontSize: 13, fontWeight: "700", marginTop: 7 },
   drawingPoint: { backgroundColor: "#30264C", borderRadius: 3, height: 6, position: "absolute", width: 6 },
   drawingSegment: { backgroundColor: "#30264C", borderRadius: 3, height: 6, position: "absolute" },
-  drawingActions: { marginBottom: 10 },
+  drawingActions: { flexDirection: "row", gap: 8, marginBottom: 4 },
+  drawingActionButton: { flex: 1, marginBottom: 0, minHeight: 42, padding: 9 },
   remoteSuccess: { backgroundColor: "#D9FFEA", borderColor: "#18B86A", borderWidth: 3, shadowColor: "#18B86A", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 12 }
 });
