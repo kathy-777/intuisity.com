@@ -64,6 +64,11 @@ type BackendAdminReport = {
     currentCity?: string;
     currentState?: string;
     currentCountry?: string;
+    birthChartType?: string;
+    sunSign?: string;
+    moonSign?: string;
+    risingSign?: string;
+    birthLocation?: string;
     totalClicks: number;
     totalTimeMs: number;
     totalActiveTimeMs: number;
@@ -123,7 +128,7 @@ export function clearBackendSyncLog() {
   try {
     globalThis.localStorage?.removeItem(backendSyncLogKey);
   } catch {
-    // Ignore storage errors so the admin UI still works.
+    // The visible report will refresh after the next save attempt.
   }
 }
 
@@ -185,6 +190,30 @@ export function syncModuleTime(event: {
   postToBackend("/api/analytics/module-time", event);
 }
 
+export function syncSiteVisit() {
+  try {
+    const browserWindow = typeof globalThis !== "undefined" ? (globalThis as any).window : undefined;
+    const sessionStorage = browserWindow?.sessionStorage || globalThis.sessionStorage;
+    const visitKey = "intuisity-site-visit-recorded";
+    if (sessionStorage?.getItem(visitKey)) return;
+
+    const visitorEmail = getAnonymousVisitorEmail();
+    const visitedAt = new Date();
+    sessionStorage?.setItem(visitKey, "true");
+    syncModuleTime({
+      activeDurationMs: 1,
+      date: getDateKey(),
+      durationMs: 1,
+      email: visitorEmail,
+      moduleId: "site-visit",
+      moduleLabel: "Website Visit",
+      startedAt: visitedAt.toISOString()
+    });
+  } catch {
+    // Visitor tracking should never interrupt the user experience.
+  }
+}
+
 export function syncModuleFeedback(email: string, feedback: unknown) {
   postToBackend("/api/module-feedback", { email, feedback, savedAt: new Date().toISOString() });
 }
@@ -208,7 +237,14 @@ export async function sendFriendInviteEmail(invite: {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error?.message || error?.error || "Invite email could not be sent.");
+    const detailMessage =
+      error?.details?.message ||
+      error?.details?.error ||
+      error?.details?.name ||
+      error?.message ||
+      error?.error ||
+      "Invite email could not be sent.";
+    throw new Error(detailMessage);
   }
 
   return response.json();
@@ -279,4 +315,22 @@ function getDateKey() {
     String(now.getMonth() + 1).padStart(2, "0"),
     String(now.getDate()).padStart(2, "0")
   ].join("-");
+}
+
+function getAnonymousVisitorEmail() {
+  const storageKey = "intuisity-anonymous-visitor-id";
+  const browserWindow = typeof globalThis !== "undefined" ? (globalThis as any).window : undefined;
+  const storage = browserWindow?.localStorage || globalThis.localStorage;
+  let visitorId = storage?.getItem(storageKey) || "";
+
+  if (!visitorId) {
+    const randomValue =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    visitorId = randomValue.replace(/[^a-zA-Z0-9]/g, "").slice(0, 32);
+    storage?.setItem(storageKey, visitorId);
+  }
+
+  return `visitor-${visitorId.toLowerCase()}@anonymous.intuisity`;
 }

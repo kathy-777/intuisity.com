@@ -20,9 +20,9 @@ import {
   remoteViewingOptions,
   remoteViewingTarget
 } from "./src/data/mockData";
-import { createStripeCheckoutSession, premiumPlan } from "./src/services/subscriptions";
+import { premiumPlan } from "./src/services/subscriptions";
 import { formatDuration, loadAdminAnalyticsReport } from "./src/services/adminAnalytics";
-import { backendUserInsightsCsvUrl, clearBackendSyncLog, loadAdminSecret, loadBackendAdminReport, loadBackendSyncLog, saveAdminSecret, syncDailyAnswers, syncProfile } from "./src/services/backendApi";
+import { backendUserInsightsCsvUrl, clearBackendSyncLog, loadAdminSecret, loadBackendAdminReport, loadBackendSyncLog, saveAdminSecret, syncDailyAnswers, syncModuleTime, syncProfile, syncSiteVisit } from "./src/services/backendApi";
 import { DailyChallengeHub } from "./src/components/DailyChallengeHub";
 import { UserProfile } from "./src/types/userProfile";
 
@@ -141,6 +141,7 @@ export default function App() {
 
   useEffect(() => {
     updateWebMetadata();
+    syncSiteVisit();
   }, []);
 
   useEffect(() => {
@@ -169,9 +170,23 @@ export default function App() {
   }, [answers]);
 
   const startCheckout = async () => {
-    const session = await createStripeCheckoutSession(premiumPlan.id);
-    setSubscriptionStatus("Premium pending");
-    Alert.alert("Stripe checkout ready", `Connect your backend to open:\n${session.checkoutUrl}`);
+    if (userProfile?.email) {
+      const clickedAt = new Date();
+      syncModuleTime({
+        activeDurationMs: 1,
+        date: clickedAt.toISOString().slice(0, 10),
+        durationMs: 1,
+        email: userProfile.email,
+        moduleId: "premium-interest",
+        moduleLabel: "Premium interest signup",
+        startedAt: clickedAt.toISOString()
+      });
+    }
+    setSubscriptionStatus("Early access requested");
+    Alert.alert(
+      "You are on the premium interest list",
+      "Premium is not live yet. We will let you know when it becomes available. The first 100 signups will receive Premium free for the first year."
+    );
   };
 
   useEffect(() => {
@@ -330,6 +345,18 @@ function AccountAccess({ onAuthenticated }: { onAuthenticated: (profile: UserPro
 
   const authenticate = (nextProfile: UserProfile) => {
     saveProfile(nextProfile);
+    if (nextProfile.email) {
+      const signedInAt = new Date();
+      syncModuleTime({
+        activeDurationMs: 1,
+        date: signedInAt.toISOString().slice(0, 10),
+        durationMs: 1,
+        email: nextProfile.email,
+        moduleId: "login",
+        moduleLabel: "Login",
+        startedAt: signedInAt.toISOString()
+      });
+    }
     onAuthenticated(nextProfile);
   };
 
@@ -484,11 +511,7 @@ function AccountAccess({ onAuthenticated }: { onAuthenticated: (profile: UserPro
             const profileToUse: UserProfile = saved.passwordHash
               ? { ...saved, authProvider: saved.authProvider || "password" }
               : { ...saved, authProvider: "password", passwordHash };
-            if (!saved.passwordHash) {
-              saveProfile(profileToUse);
-            }
-            globalThis.localStorage?.setItem(activeProfileKey, saved.email);
-            onAuthenticated(profileToUse);
+            authenticate(profileToUse);
           }}
           style={styles.primaryButton}
         >
@@ -535,11 +558,10 @@ function AccountAccess({ onAuthenticated }: { onAuthenticated: (profile: UserPro
               authProvider: "password" as const,
               passwordHash: createPasswordHash(saved.email, password)
             };
-            saveProfile(updatedProfile);
             setPassword("");
             setConfirmPassword("");
             setError("");
-            onAuthenticated(updatedProfile);
+            authenticate(updatedProfile);
           }}
           style={[styles.primaryButton, !resetReady && styles.disabledButton]}
         >
@@ -1351,12 +1373,19 @@ function Premium({ status, startCheckout }: { status: string; startCheckout: () 
       <SectionHeader
         eyebrow="Subscriptions"
         title={premiumPlan.name}
-        subtitle="A Stripe-ready premium offer for expanded practice, challenges, and trend tracking."
+        subtitle="Premium is not live yet. Join the early-access list and we will let you know when it becomes available."
       />
       <View style={styles.card}>
         <View style={styles.rowBetween}>
-          <Text style={styles.price}>{premiumPlan.price}</Text>
-          <Text style={styles.statusPill}>{status}</Text>
+          <Text style={styles.price}>Coming soon</Text>
+          <Text style={styles.statusPill}>{status === "Free" ? "Not live yet" : status}</Text>
+        </View>
+        <View style={styles.premiumOfferCard}>
+          <Ionicons color="#7555C7" name="gift-outline" size={22} />
+          <View style={styles.adminInsightCopy}>
+            <Text style={styles.cardTitle}>First 100 signups</Text>
+            <Text style={styles.bodyText}>The first 100 people who request premium access will receive Premium free for the first year.</Text>
+          </View>
         </View>
         {premiumPlan.features.map((feature) => (
           <View key={feature} style={styles.featureRow}>
@@ -1366,8 +1395,8 @@ function Premium({ status, startCheckout }: { status: string; startCheckout: () 
         ))}
       </View>
       <Pressable onPress={startCheckout} style={styles.primaryButton}>
-        <Ionicons color="#FFFFFF" name="lock-open-outline" size={18} />
-        <Text style={styles.primaryButtonText}>Start premium</Text>
+        <Ionicons color="#FFFFFF" name="notifications-outline" size={18} />
+        <Text style={styles.primaryButtonText}>Let me know when Premium is available</Text>
       </Pressable>
     </View>
   );
@@ -1380,13 +1409,14 @@ function AdminDashboard() {
   const [adminSecretSavedAt, setAdminSecretSavedAt] = useState(adminSecret ? "Saved on this device" : "");
   const [showAdminSecret, setShowAdminSecret] = useState(false);
   const [adminReportPage, setAdminReportPage] = useState<"overview" | "user-insights">("overview");
+  const [showBackendDetails, setShowBackendDetails] = useState(false);
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
   const [moduleTrendDays, setModuleTrendDays] = useState<1 | 7 | 14 | 30>(7);
-  const [backendSyncLogVersion, setBackendSyncLogVersion] = useState(0);
+  const [backendLogRefresh, setBackendLogRefresh] = useState(0);
   const localReport = loadAdminAnalyticsReport(reportStartDate, reportEndDate);
   const report = backendReport || localReport;
-  const recentBackendSaves = useMemo(() => loadBackendSyncLog(), [backendSyncLogVersion]);
+  const recentBackendSaves = useMemo(loadBackendSyncLog, [backendLogRefresh]);
   const hasActivity = report.totalUsers > 0 || report.totalVisits > 0 || report.feedbackCount > 0;
   const visitorTrendMax = Math.max(1, ...(report.visitorTrend || []).map((day) => day.uniqueVisitors));
   const visitorTrendRows = (report.visitorTrend || []).slice(-14).reverse();
@@ -1440,6 +1470,12 @@ function AdminDashboard() {
         <Text style={styles.adminFeedbackMeta}>
           {[user.currentCity, user.currentState, user.currentCountry].filter(Boolean).join(", ") || "No current location saved"}
         </Text>
+        {(user.sunSign || user.moonSign || user.risingSign) && (
+          <Text style={styles.adminFeedbackMeta}>
+            Chart: {[user.sunSign && `Sun ${user.sunSign}`, user.moonSign && `Moon ${user.moonSign}`, user.risingSign && `Rising ${user.risingSign}`].filter(Boolean).join(" · ")}
+            {user.birthChartType ? ` · ${user.birthChartType}` : ""}
+          </Text>
+        )}
       </View>
     )) : (
       <View style={styles.adminEmptyCard}>
@@ -1555,7 +1591,6 @@ function AdminDashboard() {
           <Ionicons color="#008A94" name={backendReport ? "checkmark-circle-outline" : "desktop-outline"} size={24} />
         </View>
         <View style={styles.adminInsightCopy}>
-          <Text style={styles.adminInsightTitle}>Live backend status</Text>
           <Text style={styles.adminInsightTitle}>{backendStatus}</Text>
           <Text style={styles.adminInsightText}>Most used area: {report.mostUsedModule}</Text>
           <Text style={styles.adminStatusMeta}>
@@ -1617,27 +1652,45 @@ function AdminDashboard() {
         </View>
       )}
 
-      <View style={styles.adminSectionHeaderRow}>
-        <Text style={styles.adminSectionTitle}>Recent save check</Text>
-        <Pressable
-          onPress={() => {
-            clearBackendSyncLog();
-            setBackendSyncLogVersion((current) => current + 1);
-          }}
-          style={styles.adminLightButton}
-        >
-          <Ionicons color="#7555C7" name="trash-outline" size={17} />
-          <Text style={styles.adminLightButtonText}>Clear</Text>
+      <View style={styles.adminCollapseCard}>
+        <Pressable onPress={() => setShowBackendDetails((current) => !current)} style={styles.adminCollapseHeader}>
+          <View style={styles.adminCollapseIcon}>
+            <Ionicons color="#7555C7" name="server-outline" size={20} />
+          </View>
+          <View style={styles.adminInsightCopy}>
+            <Text style={styles.adminStartTitle}>Backend API reports</Text>
+            <Text style={styles.adminFeedbackMeta}>Closed by default. Open only when you want to check API saves or troubleshoot Supabase.</Text>
+          </View>
+          <Ionicons color="#7555C7" name={showBackendDetails ? "chevron-up-outline" : "chevron-down-outline"} size={22} />
         </Pressable>
+
+        {showBackendDetails && (
+          <View style={styles.adminCollapseBody}>
+      <View style={styles.adminModuleTopline}>
+        <View style={styles.adminInsightCopy}>
+          <Text style={styles.adminSectionTitle}>Backend connection check</Text>
+          <Text style={styles.adminFeedbackMeta}>The live status above is the source of truth. These rows show recent save attempts from this browser.</Text>
+        </View>
+        {recentBackendSaves.length > 0 && (
+          <Pressable
+            onPress={() => {
+              clearBackendSyncLog();
+              setBackendLogRefresh((current) => current + 1);
+            }}
+            style={styles.adminLightButton}
+          >
+            <Ionicons color="#7555C7" name="trash-outline" size={17} />
+            <Text style={styles.adminLightButtonText}>Clear old checks</Text>
+          </Pressable>
+        )}
       </View>
-      <Text style={styles.adminFeedbackMeta}>Old failed attempts can stay here until you clear them, so you can keep track of what already needs attention.</Text>
       {recentBackendSaves.length ? (
         recentBackendSaves.slice(0, 6).map((entry, index) => (
           <View key={`${entry.path}-${entry.savedAt}-${index}`} style={styles.adminFeedbackCard}>
             <View style={styles.adminModuleTopline}>
               <Text style={styles.adminModuleLabel}>{entry.path}</Text>
               <View style={[styles.adminUserPill, !entry.ok && styles.adminWarningPill]}>
-                <Text style={styles.adminUserPillText}>{entry.ok ? "Saved" : "Needs fix"}</Text>
+                <Text style={styles.adminUserPillText}>{entry.ok ? "Saved" : "Past issue"}</Text>
               </View>
             </View>
             <Text style={styles.bodyText}>{entry.message}</Text>
@@ -1651,6 +1704,9 @@ function AdminDashboard() {
           <Text style={styles.bodyText}>Sign in, open a challenge for a few seconds, complete results, or save feedback. Then come back here to see whether those saves reached Supabase.</Text>
         </View>
       )}
+          </View>
+        )}
+      </View>
 
       <View style={styles.adminMetricGrid}>
         {summaryMetrics.map((metric) => (
@@ -2355,6 +2411,17 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 12
   },
+  premiumOfferCard: {
+    alignItems: "flex-start",
+    backgroundColor: "#F8F5FF",
+    borderColor: "#DCCFF5",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+    padding: 12
+  },
   adminRow: {
     alignItems: "center",
     backgroundColor: "#FFFFFF",
@@ -2492,6 +2559,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     marginTop: 8
+  },
+  adminCollapseCard: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#DCCFF5",
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 14,
+    overflow: "hidden"
+  },
+  adminCollapseHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    padding: 12
+  },
+  adminCollapseIcon: {
+    alignItems: "center",
+    backgroundColor: "#F8F5FF",
+    borderColor: "#DCCFF5",
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: "center",
+    width: 38
+  },
+  adminCollapseBody: {
+    borderTopColor: "#E7E3F2",
+    borderTopWidth: 1,
+    padding: 12,
+    paddingTop: 10
   },
   adminSectionTitle: {
     color: "#30264C",
