@@ -72,6 +72,9 @@ Changes included:
 - Google sign-in now has a runtime public-config fallback so EXPO_PUBLIC_GOOGLE_CLIENT_ID can be read from the live Vercel deployment.
 - Google sign-in now fetches public-config with no-cache so the browser does not keep an older missing-client-id response.
 - App.txt has been refreshed to match App.tsx so older Google-login code is not accidentally uploaded.
+- Mobile login now looks up saved profiles from Supabase when the profile is not saved on that phone/browser.
+- Google login now merges an existing Supabase profile on mobile instead of relying only on local browser storage.
+- Password reset can now find a profile from Supabase on a new phone/browser.
 - Admin reports show active time separately from page time.
 - Admin/test emails are excluded from reporting totals.
 - Admin reports include unique visitors, visitor volume, date range, and visitor trend chart/table.

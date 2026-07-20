@@ -151,6 +151,23 @@ export function syncProfile(profile: unknown) {
   postToBackend("/api/profiles", { profile });
 }
 
+export async function fetchSavedProfile(email: string) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) return null;
+
+  try {
+    const response = await fetch(`${getBackendUrl()}/api/profiles?email=${encodeURIComponent(normalizedEmail)}`, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" }
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    return payload?.profile || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function lookupBirthLocation(query: string): Promise<{ label: string; latitude: number; longitude: number; source?: string } | null> {
   const normalizedQuery = query.trim();
   if (normalizedQuery.length < 2) return null;

@@ -22,7 +22,7 @@ import {
 } from "./src/data/mockData";
 import { premiumPlan } from "./src/services/subscriptions";
 import { formatDuration, loadAdminAnalyticsReport } from "./src/services/adminAnalytics";
-import { backendUserInsightsCsvUrl, clearBackendSyncLog, loadAdminSecret, loadBackendAdminReport, loadBackendSyncLog, saveAdminSecret, syncDailyAnswers, syncModuleTime, syncProfile, syncSiteVisit } from "./src/services/backendApi";
+import { backendUserInsightsCsvUrl, clearBackendSyncLog, fetchSavedProfile, loadAdminSecret, loadBackendAdminReport, loadBackendSyncLog, saveAdminSecret, syncDailyAnswers, syncModuleTime, syncProfile, syncSiteVisit } from "./src/services/backendApi";
 import { DailyChallengeHub } from "./src/components/DailyChallengeHub";
 import { UserProfile } from "./src/types/userProfile";
 
@@ -342,6 +342,13 @@ function AccountAccess({ onAuthenticated }: { onAuthenticated: (profile: UserPro
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loginNotice, setLoginNotice] = useState("");
+  const findSavedProfile = async (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const localProfile = loadProfiles().find((item) => item.email.toLowerCase() === normalizedEmail);
+    if (localProfile) return localProfile;
+    const backendProfile = await fetchSavedProfile(normalizedEmail);
+    return backendProfile ? normalizeLoadedProfile(backendProfile) : null;
+  };
 
   const authenticate = (nextProfile: UserProfile) => {
     saveProfile(nextProfile);
@@ -366,7 +373,7 @@ function AccountAccess({ onAuthenticated }: { onAuthenticated: (profile: UserPro
     try {
       const googleProfile = await signInWithGoogle();
       const normalizedEmail = googleProfile.email.trim().toLowerCase();
-      const savedProfile = loadProfiles().find((item) => item.email.toLowerCase() === normalizedEmail);
+      const savedProfile = await findSavedProfile(normalizedEmail);
       const nextProfile: UserProfile = {
         ...emptyProfile,
         ...savedProfile,
@@ -492,11 +499,12 @@ function AccountAccess({ onAuthenticated }: { onAuthenticated: (profile: UserPro
         {loginNotice ? <Text style={styles.accountHint}>{loginNotice}</Text> : null}
         {error ? <Text style={styles.accountError}>{error}</Text> : null}
         <Pressable
-          onPress={() => {
+          onPress={async () => {
             setLoginNotice("");
-            const saved = loadProfiles().find((item) => item.email.toLowerCase() === profile.email.trim().toLowerCase());
+            setError("");
+            const saved = await findSavedProfile(profile.email);
             if (!saved) {
-              setError("We could not find a saved profile with that email.");
+              setError("We could not find a saved profile with that email. Create an account first, or check that the email is typed correctly.");
               return;
             }
             if (password.trim().length < 8) {
@@ -543,8 +551,8 @@ function AccountAccess({ onAuthenticated }: { onAuthenticated: (profile: UserPro
         {error ? <Text style={styles.accountError}>{error}</Text> : null}
         <Pressable
           disabled={!resetReady}
-          onPress={() => {
-            const saved = loadProfiles().find((item) => item.email.toLowerCase() === profile.email.trim().toLowerCase());
+          onPress={async () => {
+            const saved = await findSavedProfile(profile.email);
             if (!saved) {
               setError("We could not find a saved profile with that email.");
               return;
@@ -919,6 +927,18 @@ function loadActiveProfile(): UserProfile | null {
   } catch {
     return null;
   }
+}
+
+function normalizeLoadedProfile(profile: UserProfile): UserProfile {
+  return {
+    ...profile,
+    currentCity: profile.currentCity || "",
+    currentCountry: profile.currentCountry || detectLocaleCountry(),
+    currentState: profile.currentState || "",
+    language: profile.language || "en",
+    reminderTime: profile.reminderTime || "9:00 AM",
+    timeZone: profile.timeZone || detectTimeZone()
+  };
 }
 
 function loadTreasureInviteGuestProfile(): UserProfile | null {
