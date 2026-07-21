@@ -98,6 +98,8 @@ Changes included:
 - Website visitors are now counted when they open the app, even before creating an account.
 - Anonymous website visits now count in visitor totals and visitor-over-time reports, but they do not appear as fake people in User Insights.
 - Website Visit records are kept out of the module-time challenge charts so the module reports stay focused on actual challenge usage.
+- Saved profiles now also create one small daily profile activity signal, so newly logged-in users are counted even if they leave before opening a challenge long enough to record module time.
+- Profile Signup activity is counted for visitor/user reporting, but kept out of challenge module charts so it does not distort module usage.
 - User profiles now save birth chart data, including chart calculation type, birth location label, Sun sign, Moon sign, Rising sign, Midheaven sign, and strongest aspect when available.
 - User Insights CSV now includes birth chart type, Sun sign, Moon sign, Rising sign, and birth location.
 - Admin User Insights cards now show saved chart basics when available.
@@ -114,6 +116,8 @@ Changes included:
 - Treasure Chest friend play now shows an obvious Message to your friend box right before the user locks in and sends the tiles.
 - Treasure Chest friend submit button now says Lock in my tiles and send.
 - Treasure Chest win messages still pop out of the chest, and the friend's message now also stays visible in a clean card below the treasure box for reading or screenshots.
+- Treasure Chest home/front-page wording now explains that users can add a secret note for a friend.
+- Invited friends now see a free-to-play Intuisity invitation below the opened treasure chest, with a short description of the rest of the site.
 - Treasure Chest friend setup now uses a clear Next button after the email field to save/select the friend and continue to the tile screen.
 - Treasure Chest friend setup no longer relies on the small plus button, and the lower continue button stays disabled until a saved friend is selected.
 - Treasure Chest friend tile screen now clearly says to tap five treasures first, labels the order boxes, and changes the submit button to show how many tiles are still needed.

@@ -2688,6 +2688,21 @@ export function DailyChallengeHub({ answers, homeRequestId = 0, isPremium, onLog
                 <Text style={styles.treasureNoteText}>{treasureInspirationMessage}</Text>
               </View>
             )}
+            {treasureWon && invitedTreasureSender && (
+              <View style={styles.treasureSiteInviteCard}>
+                <View style={styles.treasureFriendMessageHeader}>
+                  <Ionicons color="#008A94" name="sparkles-outline" size={22} />
+                  <Text style={styles.treasureSiteInviteTitle}>Explore Intuisity free</Text>
+                </View>
+                <Text style={styles.treasureSiteInviteText}>
+                  Intuisity is free to play and includes daily intuition training, remote viewing practice, astrology insights, positivity prompts, and progress results to help you build awareness and inner knowing.
+                </Text>
+                <Pressable onPress={onLogout} style={styles.treasureSiteInviteButton}>
+                  <Ionicons color="#FFFFFF" name="person-add-outline" size={18} />
+                  <Text style={styles.primaryButtonText}>Create free account</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </View>
         <Text style={styles.prototypeNote}>
@@ -5266,6 +5281,10 @@ const styles = StyleSheet.create({
   treasureFriendMessageHeader: { alignItems: "center", flexDirection: "row", gap: 8, justifyContent: "center", marginBottom: 8 },
   treasureFriendMessageTitle: { color: "#6544B8", fontSize: 14, fontWeight: "900", textAlign: "center" },
   treasureNoteText: { color: "#008A94", fontSize: 18, fontWeight: "900", lineHeight: 25, textAlign: "center" },
+  treasureSiteInviteCard: { backgroundColor: "#F8F5FF", borderColor: "#DCCFF5", borderRadius: 8, borderWidth: 2, marginTop: 10, padding: 14 },
+  treasureSiteInviteTitle: { color: "#30264C", fontSize: 16, fontWeight: "900", textAlign: "center" },
+  treasureSiteInviteText: { color: "#5D536A", fontSize: 14, fontWeight: "800", lineHeight: 21, marginBottom: 12, textAlign: "center" },
+  treasureSiteInviteButton: { alignItems: "center", backgroundColor: "#7555C7", borderRadius: 8, flexDirection: "row", gap: 8, justifyContent: "center", minHeight: 48, paddingHorizontal: 14, paddingVertical: 12 },
   treasureTokenGrid: { flexDirection: "row", gap: 8, justifyContent: "center", marginBottom: 14 },
   treasureToken: { alignItems: "center", backgroundColor: "#EDFBFB", borderColor: "#00AEBB", borderRadius: 8, borderWidth: 2, cursor: "grab" as any, flex: 1, minHeight: 66, justifyContent: "center" },
   treasureTokenSelected: { backgroundColor: "#FFF9E8", borderColor: "#F4B740", borderWidth: 3, shadowColor: "#F4B740", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 10 },

@@ -10,7 +10,7 @@ export const dailyChallenges = [
     id: "social-prediction",
     title: "Challenge 1: Treasure Chest",
     tagline: "Play a friend treasure challenge",
-    prompt: "Arrange five treasure items and use your intuition to unlock the hidden order from a friend or the computer.",
+    prompt: "Arrange five treasure items, add a secret note for a friend, and use intuition to unlock the hidden order from a friend or the computer.",
     choices: ["Sun", "Moon", "Star", "Cloud"],
     answer: "Moon"
   },
