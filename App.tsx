@@ -22,7 +22,7 @@ import {
 } from "./src/data/mockData";
 import { premiumPlan } from "./src/services/subscriptions";
 import { formatDuration, loadAdminAnalyticsReport } from "./src/services/adminAnalytics";
-import { backendUserInsightsCsvUrl, clearBackendSyncLog, fetchSavedProfile, loadAdminSecret, loadBackendAdminReport, loadBackendSyncLog, saveAdminSecret, syncDailyAnswers, syncModuleTime, syncProfile, syncSiteVisit } from "./src/services/backendApi";
+import { backendUserInsightsCsvUrl, clearBackendSyncLog, fetchSavedProfile, getLastAdminReportError, loadAdminSecret, loadBackendAdminReport, loadBackendSyncLog, saveAdminSecret, syncDailyAnswers, syncModuleTime, syncProfile, syncSiteVisit } from "./src/services/backendApi";
 import { DailyChallengeHub } from "./src/components/DailyChallengeHub";
 import { UserProfile } from "./src/types/userProfile";
 
@@ -128,6 +128,7 @@ export default function App() {
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("today");
   const [homeRequestId, setHomeRequestId] = useState(0);
+  const [friendChallengeRequestId, setFriendChallengeRequestId] = useState(0);
   const [answers, setAnswers] = useState<Answers>(() => {
     const activeProfile = loadActiveProfile();
     return activeProfile ? loadDailyAnswers(activeProfile.email) : {};
@@ -287,6 +288,7 @@ export default function App() {
           <DailyChallengeHub
             answers={answers}
             homeRequestId={homeRequestId}
+            friendChallengeRequestId={friendChallengeRequestId}
             isPremium={subscriptionStatus !== "Free"}
             onLogout={confirmLogout}
             onUpdateProfile={(updatedProfile) => {
@@ -297,7 +299,10 @@ export default function App() {
             userProfile={userProfile}
           />
         )}
-        {activeTab === "friends" && <FriendChallenges />}
+        {activeTab === "friends" && <FriendChallenges onCreateChallenge={() => {
+          setActiveTab("today");
+          setFriendChallengeRequestId((current) => current + 1);
+        }} />}
         {activeTab === "premium" && (
           <Premium status={subscriptionStatus} startCheckout={startCheckout} />
         )}
@@ -1377,7 +1382,7 @@ function RemoteViewing({
   );
 }
 
-function FriendChallenges() {
+function FriendChallenges({ onCreateChallenge }: { onCreateChallenge: () => void }) {
   return (
     <View>
       <SectionHeader
@@ -1386,17 +1391,17 @@ function FriendChallenges() {
         subtitle="Invite friends into short prediction games and compare scores."
       />
       <Pressable
-        onPress={() => Alert.alert("Invite created", "Friend challenge invitation is ready to send.")}
+        onPress={onCreateChallenge}
         style={styles.primaryButton}
       >
         <Ionicons color="#FFFFFF" name="send-outline" size={18} />
-        <Text style={styles.primaryButtonText}>Create challenge</Text>
+        <Text style={styles.primaryButtonText}>Create multiplayer challenge</Text>
       </Pressable>
       {friendChallenges.length === 0 && (
         <View style={styles.card}>
           <Ionicons color="#7555C7" name="people-outline" size={32} />
           <Text style={styles.cardTitle}>No friend challenges yet</Text>
-          <Text style={styles.bodyText}>When you invite friends, their challenges will appear here.</Text>
+          <Text style={styles.bodyText}>Create a Treasure Chest race for up to five friends. The leaderboard compares tries and completion time.</Text>
         </View>
       )}
       {friendChallenges.map((challenge) => (
@@ -1546,7 +1551,7 @@ function AdminDashboard() {
         setBackendStatus("Connected to real backend database");
         setReportRefreshedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
       } else {
-        setBackendStatus(adminSecret.trim() ? "Admin backend could not be reached" : "Enter the admin report password to unlock live reports");
+        setBackendStatus(adminSecret.trim() ? getLastAdminReportError() || "Admin backend could not be reached" : "Enter the admin report password to unlock live reports");
       }
     });
     return () => {

@@ -11,7 +11,7 @@
     "web:offline": "scripts\\start-web-offline.cmd",
     "backend": "node backend/server.js",
     "build:web": "expo export --platform web && node scripts/copy-legal-pages.js",
-    "test": "node tests/scoring.test.js && node tests/astrology.test.js && node tests/dailyLessons.test.js"
+    "test": "node tests/scoring.test.js && node tests/astrology.test.js && node tests/dailyLessons.test.js && node tests/treasureChallenges.test.js && node tests/adminReportRoute.test.js"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",

@@ -18,7 +18,7 @@ module.exports = async function handler(request, response) {
   }
 
   const apiKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.INTUISITY_FROM_EMAIL || "Intuisity <info@intuisity.com>";
+  const fromEmail = process.env.INTUISITY_FROM_EMAIL || "Intuisity <admin@intuisity.com>";
 
   if (!apiKey) {
     response.status(500).json({ error: "Missing RESEND_API_KEY" });

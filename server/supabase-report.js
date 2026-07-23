@@ -1,4 +1,4 @@
-const { supabaseRequest } = require("./_supabase");
+const { supabaseRequest } = require("./supabase");
 
 const excludedReportEmails = new Set(["admin@intuisity.com", "kathy@intuisity.com"]);
 const moduleOrder = [

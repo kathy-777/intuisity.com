@@ -56,6 +56,9 @@ If Supabase says "new row violates row-level security policy", check Vercel Sett
 
 - SUPABASE_URL should be https://tioepurhcbispxqahjqb.supabase.co
 - SUPABASE_SERVICE_ROLE_KEY must be the secret service_role key from Supabase, not the publishable/anon key.
+- RESEND_API_KEY must be an active Resend API key with permission to send email.
+- INTUISITY_FROM_EMAIL should be set to the sender proven to deliver through Resend: Intuisity <admin@intuisity.com>.
+- Run the latest supabase-schema.sql in Supabase before deploying so the treasure_challenges table exists.
 - After changing either value, redeploy the Vercel project.
 
 Google app setup links after Vercel deploys:

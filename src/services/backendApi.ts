@@ -96,6 +96,7 @@ type BackendAdminReport = {
 const adminSecretStorageKey = "intuisity-admin-secret";
 const backendSyncLogKey = "intuisity-backend-sync-log";
 let lastDailyAnswersSyncPayload = "";
+let lastAdminReportError = "";
 
 type BackendSyncLogEntry = {
   path: string;
@@ -250,17 +251,58 @@ export function syncFriends(email: string, friends: unknown) {
   postToBackend("/api/friends", { email, friends });
 }
 
-export async function sendFriendInviteEmail(invite: {
+export type TreasureChallengeStatus = "sent" | "opened" | "completed";
+
+export type TreasureChallengeReceipt = {
+  id: string;
+  senderToken: string;
+  friendName: string;
+  friendEmail: string;
+  status: TreasureChallengeStatus;
+  sentAt?: string;
+  openedAt?: string;
+  completedAt?: string;
+  emailError?: string | null;
+  emailDeliveryStatus?: string;
+  attempts?: number;
+  solved?: boolean;
+  durationMs?: number | null;
+  rank?: number;
+  playerCount?: number;
+};
+
+export async function createTreasureChallenge(invite: {
   friendEmail: string;
   friendName: string;
+  senderEmail: string;
   senderName: string;
+  tiles: string[];
   note?: string;
-  challengeUrl?: string;
-}) {
-  const response = await fetch("/api/send-friend-invite", {
-    body: JSON.stringify(invite),
+  origin?: string;
+  competitionId?: string;
+}): Promise<{ id: string; senderToken: string; status: TreasureChallengeStatus }> {
+  return treasureChallengeRequest("", invite, "POST");
+}
+
+export async function markTreasureChallengeOpened(id: string) {
+  return treasureChallengeRequest("", { action: "opened", id }, "POST");
+}
+
+export async function completeTreasureChallenge(id: string, answers: string[], attempts: number, solved: boolean) {
+  return treasureChallengeRequest("", { action: "completed", answers, attempts, id, solved }, "POST");
+}
+
+export async function fetchTreasureChallenge(id: string, senderToken = "") {
+  const params = new URLSearchParams({ id });
+  if (senderToken) params.set("senderToken", senderToken);
+  return treasureChallengeRequest(`?${params.toString()}`, undefined, "GET");
+}
+
+async function treasureChallengeRequest(query: string, body: unknown, method: "GET" | "POST") {
+  const response = await fetch(`/api/treasure-challenges${query}`, {
+    ...(body ? { body: JSON.stringify(body) } : {}),
     headers: { "Content-Type": "application/json" },
-    method: "POST"
+    method
   });
 
   if (!response.ok) {
@@ -271,7 +313,7 @@ export async function sendFriendInviteEmail(invite: {
       error?.details?.name ||
       error?.message ||
       error?.error ||
-      "Invite email could not be sent.";
+      "Treasure challenge request failed.";
     throw new Error(detailMessage);
   }
 
@@ -280,6 +322,7 @@ export async function sendFriendInviteEmail(invite: {
 
 export async function loadBackendAdminReport(adminSecret = loadAdminSecret(), startDate = "", endDate = ""): Promise<BackendAdminReport | null> {
   try {
+    lastAdminReportError = "";
     const params = new URLSearchParams();
     if (startDate.trim()) params.set("startDate", startDate.trim());
     if (endDate.trim()) params.set("endDate", endDate.trim());
@@ -292,11 +335,28 @@ export async function loadBackendAdminReport(adminSecret = loadAdminSecret(), st
         "Cache-Control": "no-cache"
       }
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        lastAdminReportError = "The admin report password does not match the password saved in Vercel.";
+      } else if (response.status === 404) {
+        lastAdminReportError = "The Admin reporting function has not been deployed yet.";
+      } else if (response.status >= 500) {
+        lastAdminReportError = payload?.message || payload?.error || "The live reporting function failed on Vercel.";
+      } else {
+        lastAdminReportError = payload?.message || payload?.error || `The Admin report returned status ${response.status}.`;
+      }
+      return null;
+    }
     return await response.json();
-  } catch {
+  } catch (error) {
+    lastAdminReportError = error instanceof Error ? error.message : "The Admin report request could not connect.";
     return null;
   }
+}
+
+export function getLastAdminReportError() {
+  return lastAdminReportError;
 }
 
 async function postToBackend(path: string, body: unknown) {
