@@ -1458,7 +1458,7 @@ function AdminDashboard() {
   const [adminSecret, setAdminSecret] = useState(loadAdminSecret);
   const [adminSecretSavedAt, setAdminSecretSavedAt] = useState(adminSecret ? "Saved on this device" : "");
   const [showAdminSecret, setShowAdminSecret] = useState(false);
-  const [adminReportPage, setAdminReportPage] = useState<"overview" | "user-insights">("overview");
+  const [adminReportPage, setAdminReportPage] = useState<"overview" | "user-insights" | "unique-visitors">("overview");
   const [showBackendDetails, setShowBackendDetails] = useState(false);
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
@@ -1559,6 +1559,71 @@ function AdminDashboard() {
     };
   }, [adminSecret, reportEndDate, reportRefreshId, reportStartDate]);
 
+  if (adminReportPage === "unique-visitors") {
+    return (
+      <View>
+        <View style={styles.adminSubpageHeader}>
+          <Pressable onPress={() => setAdminReportPage("overview")} style={styles.adminBackButton}>
+            <Ionicons color="#7555C7" name="arrow-back-outline" size={18} />
+            <Text style={styles.adminLightButtonText}>Back to reports</Text>
+          </Pressable>
+          <View style={styles.adminHeroIcon}>
+            <Ionicons color="#FFFFFF" name="person-circle-outline" size={30} />
+          </View>
+          <Text style={styles.adminHeroEyebrow}>Admin dashboard</Text>
+          <Text style={styles.adminHeroTitle}>Unique visitors</Text>
+          <Text style={styles.adminHeroSubtitle}>
+            See each distinct visitor, whether they signed in or visited anonymously, along with platform and visit activity.
+          </Text>
+        </View>
+
+        <View style={styles.adminMetricGrid}>
+          <Metric icon="person-circle-outline" label="Unique visitors" value={report.uniqueVisitors} />
+          <Metric icon="people-outline" label="Saved users" value={report.totalUsers} onPress={() => setAdminReportPage("user-insights")} />
+          <Metric icon="pulse-outline" label="Tracked visits" value={report.totalVisits} />
+        </View>
+
+        <View style={styles.adminRefreshRow}>
+          <Pressable onPress={refreshReports} style={styles.adminLightButton}>
+            <Ionicons color="#7555C7" name="refresh-outline" size={17} />
+            <Text style={styles.adminLightButtonText}>Refresh visitors</Text>
+          </Pressable>
+          <Text style={styles.adminFeedbackMeta}>The selected report date range is applied.</Text>
+        </View>
+
+        <Text style={styles.adminSectionTitle}>Visitor details</Text>
+        {report.visitorInsights?.length ? report.visitorInsights.map((visitor) => (
+          <View key={visitor.key} style={styles.adminUserCard}>
+            <View style={styles.adminModuleTopline}>
+              <View style={styles.adminUserIdentity}>
+                <Text style={styles.adminModuleLabel}>{visitor.name}</Text>
+                <Text style={styles.adminFeedbackMeta}>
+                  {visitor.email || (visitor.visitorId ? `Visitor ID: ${visitor.visitorId}` : "Anonymous visitor")}
+                </Text>
+              </View>
+              <View style={styles.adminUserPill}>
+                <Text style={styles.adminUserPillText}>{visitor.visits} visits</Text>
+              </View>
+            </View>
+            <Text style={styles.bodyText}>{visitor.platform}</Text>
+            <Text style={styles.adminFeedbackMeta}>
+              First seen: {visitor.firstSeenAt ? formatReportDateTime(visitor.firstSeenAt) : "Unknown"}
+            </Text>
+            <Text style={styles.adminFeedbackMeta}>
+              Last seen: {visitor.lastSeenAt ? formatReportDateTime(visitor.lastSeenAt) : "Unknown"}
+            </Text>
+          </View>
+        )) : (
+          <View style={styles.adminEmptyCard}>
+            <Ionicons color="#008A94" name="person-circle-outline" size={24} />
+            <Text style={styles.adminEmptyTitle}>No visitor details yet</Text>
+            <Text style={styles.bodyText}>Refresh after someone visits the live website or app.</Text>
+          </View>
+        )}
+      </View>
+    );
+  }
+
   if (adminReportPage === "user-insights") {
     return (
       <View>
@@ -1579,7 +1644,7 @@ function AdminDashboard() {
 
         <View style={styles.adminMetricGrid}>
           <Metric icon="people-outline" label="Saved users" value={report.totalUsers} />
-          <Metric icon="person-circle-outline" label="Unique visitors" value={report.uniqueVisitors} />
+          <Metric icon="person-circle-outline" label="Unique visitors" value={report.uniqueVisitors} onPress={() => setAdminReportPage("unique-visitors")} />
           <Metric icon="pulse-outline" label="Tracked visits" value={report.totalVisits} />
           <Metric icon="flash-outline" label="Active time" value={formatDuration(report.totalActiveTimeMs || report.totalTimeMs)} />
         </View>
@@ -1784,7 +1849,13 @@ function AdminDashboard() {
 
       <View style={styles.adminMetricGrid}>
         {summaryMetrics.map((metric) => (
-          <Metric key={metric.label} icon={metric.icon} label={metric.label} value={metric.value} />
+          <Metric
+            key={metric.label}
+            icon={metric.icon}
+            label={metric.label}
+            onPress={metric.label === "Unique visitors" ? () => setAdminReportPage("unique-visitors") : metric.label === "Saved users" ? () => setAdminReportPage("user-insights") : undefined}
+            value={metric.value}
+          />
         ))}
       </View>
 
@@ -2046,14 +2117,16 @@ function SectionHeader({
 function Metric({
   icon,
   label,
+  onPress,
   value
 }: {
   icon?: keyof typeof Ionicons.glyphMap;
   label: string;
+  onPress?: () => void;
   value: string | number;
 }) {
-  return (
-    <View style={styles.metric}>
+  const content = (
+    <>
       {icon && (
         <View style={styles.metricIcon}>
           <Ionicons color="#008A94" name={icon} size={18} />
@@ -2061,14 +2134,22 @@ function Metric({
       )}
       <Text style={styles.metricValue}>{value}</Text>
       <Text style={styles.metricLabel}>{label}</Text>
-    </View>
+      {onPress && <Text style={styles.adminFeedbackMeta}>Tap to open</Text>}
+    </>
   );
+  return onPress ? <Pressable accessibilityRole="button" onPress={onPress} style={styles.metric}>{content}</Pressable> : <View style={styles.metric}>{content}</View>;
 }
 
 function formatReportDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatReportDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+  return date.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function updateWebMetadata() {

@@ -62,6 +62,16 @@ type BackendAdminReport = {
   feedbackCount: number;
   averageRating: number;
   improvementResponses: Array<{ moduleLabel: string; note: string; rating: number; email: string; savedAt?: string }>;
+  visitorInsights: Array<{
+    key: string;
+    name: string;
+    email?: string;
+    visitorId?: string;
+    platform: string;
+    visits: number;
+    firstSeenAt?: string;
+    lastSeenAt?: string;
+  }>;
   userInsights: Array<{
     name: string;
     email: string;

@@ -66,6 +66,18 @@ export type AdminAnalyticsReport = {
   averageRating: number;
   improvementResponses: Array<{ moduleLabel: string; note: string; rating: number; email: string; savedAt?: string }>;
   userInsights: UserInsightReport[];
+  visitorInsights: VisitorInsightReport[];
+};
+
+export type VisitorInsightReport = {
+  key: string;
+  name: string;
+  email?: string;
+  visitorId?: string;
+  platform: string;
+  visits: number;
+  firstSeenAt?: string;
+  lastSeenAt?: string;
 };
 
 export type UserInsightReport = {
@@ -226,8 +238,44 @@ export function loadAdminAnalyticsReport(startDate = "", endDate = ""): AdminAna
     feedbackCount: feedback.feedbackCount,
     averageRating: feedback.averageRating,
     improvementResponses: feedback.improvementResponses,
-    userInsights: buildLocalUserInsights(events)
+    userInsights: buildLocalUserInsights(events),
+    visitorInsights: buildLocalVisitorInsights(rangedVisitorEvents, allProfiles)
   };
+}
+
+function buildLocalVisitorInsights(events: AnalyticsEvent[], profiles: Array<Record<string, any>>): VisitorInsightReport[] {
+  const profileByEmail = new Map(profiles.map((profile) => [String(profile.email || "").toLowerCase(), profile]));
+  const visitors = new Map<string, VisitorInsightReport>();
+
+  events.forEach((event) => {
+    const email = String(event.email || "").trim().toLowerCase();
+    if (!email) return;
+    const anonymous = email.endsWith("@anonymous.intuisity");
+    const profile = anonymous ? undefined : profileByEmail.get(email);
+    const current = visitors.get(email) || {
+      key: email,
+      name: profile?.name || (anonymous ? "Anonymous visitor" : "Signed-in visitor"),
+      email: anonymous ? "" : email,
+      visitorId: anonymous ? email.split("@")[0] : "",
+      platform: getLocalPlatformLabel(event.clientChannel || event.deviceCategory || ""),
+      visits: 0,
+      firstSeenAt: event.startedAt,
+      lastSeenAt: event.startedAt
+    };
+    current.visits += 1;
+    if (event.startedAt && (!current.firstSeenAt || event.startedAt < current.firstSeenAt)) current.firstSeenAt = event.startedAt;
+    if (event.startedAt && (!current.lastSeenAt || event.startedAt > current.lastSeenAt)) current.lastSeenAt = event.startedAt;
+    visitors.set(email, current);
+  });
+
+  return [...visitors.values()].sort((a, b) => new Date(b.lastSeenAt || 0).getTime() - new Date(a.lastSeenAt || 0).getTime());
+}
+
+function getLocalPlatformLabel(value: string) {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized.includes("app") || normalized.includes("reactnative")) return "App";
+  if (normalized.includes("mobile")) return "Mobile Web";
+  return "Desktop Web";
 }
 
 function buildModuleDailyTrend(events: AnalyticsEvent[]) {

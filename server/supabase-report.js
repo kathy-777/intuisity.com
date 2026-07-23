@@ -57,9 +57,11 @@ async function buildAdminReport(options = {}) {
   const ratings = moduleFeedback.filter((entry) => Number(entry.rating || 0));
   const ratingTotal = ratings.reduce((total, entry) => total + Number(entry.rating || 0), 0);
   const userInsights = buildUserInsights({ analyticsEvents: rangedAnalyticsEvents, dailyResults, friends, moduleFeedback, profiles });
+  const knownUserCount = countKnownUsers({ analyticsEvents, dailyResults, friends, moduleFeedback, profiles });
+  const visitorInsights = buildVisitorInsights(rangedAnalyticsEvents, profiles);
 
   return {
-    totalUsers: profiles.length,
+    totalUsers: knownUserCount,
     totalVisits: rangedAnalyticsEvents.length,
     uniqueVisitors: countUniqueVisitors(rangedAnalyticsEvents),
     visitorVolume: volume,
@@ -85,7 +87,8 @@ async function buildAdminReport(options = {}) {
         email: entry.email,
         savedAt: entry.saved_at
       })),
-    userInsights
+    userInsights,
+    visitorInsights
   };
 }
 
@@ -171,12 +174,15 @@ async function buildUserInsightsCsv(options = {}) {
 }
 
 function buildUserInsights({ analyticsEvents, dailyResults, friends, moduleFeedback, profiles }) {
-  return profiles.map((profile) => {
-    const email = profile.email;
-    const events = analyticsEvents.filter((event) => event.email === email);
-    const results = dailyResults.filter((entry) => entry.email === email);
-    const feedback = moduleFeedback.filter((entry) => entry.email === email);
-    const savedFriends = friends.find((entry) => entry.email === email);
+  const profileByEmail = new Map(profiles.map((profile) => [normalizeEmail(profile.email), profile]));
+  const emails = collectKnownEmails({ analyticsEvents, dailyResults, friends, moduleFeedback, profiles });
+
+  return emails.map((email) => {
+    const profile = profileByEmail.get(email) || { email };
+    const events = analyticsEvents.filter((event) => normalizeEmail(event.email) === email);
+    const results = dailyResults.filter((entry) => normalizeEmail(entry.email) === email);
+    const feedback = moduleFeedback.filter((entry) => normalizeEmail(entry.email) === email);
+    const savedFriends = friends.find((entry) => normalizeEmail(entry.email) === email);
     const moduleStats = new Map();
 
     events.forEach((event) => {
@@ -224,6 +230,51 @@ function buildUserInsights({ analyticsEvents, dailyResults, friends, moduleFeedb
         : profile.updated_at
     };
   }).sort((a, b) => new Date(b.lastActiveAt || 0).getTime() - new Date(a.lastActiveAt || 0).getTime());
+}
+
+function countKnownUsers(sources) {
+  return collectKnownEmails(sources).length;
+}
+
+function collectKnownEmails({ analyticsEvents = [], dailyResults = [], friends = [], moduleFeedback = [], profiles = [] }) {
+  const emails = new Set();
+  [profiles, analyticsEvents, dailyResults, moduleFeedback, friends].forEach((rows) => {
+    rows.forEach((row) => {
+      const email = normalizeEmail(row.email);
+      if (email && !isExcludedReportEmail(email) && !isAnonymousVisitorEmail(email)) emails.add(email);
+    });
+  });
+  return [...emails].sort();
+}
+
+function buildVisitorInsights(events, profiles) {
+  const profileByEmail = new Map(profiles.map((profile) => [normalizeEmail(profile.email), profile]));
+  const visitors = new Map();
+
+  events.forEach((event) => {
+    const key = getVisitorKey(event);
+    if (!key) return;
+    const email = normalizeEmail(event.email);
+    const anonymous = isAnonymousVisitorEmail(email);
+    const profile = anonymous ? null : profileByEmail.get(email);
+    const recordedAt = event.recorded_at || event.started_at || "";
+    const current = visitors.get(key) || {
+      key,
+      name: profile?.name || (anonymous ? "Anonymous visitor" : "Signed-in visitor"),
+      email: anonymous ? "" : email,
+      visitorId: anonymous ? (event.event_json?.visitorId || event.event_json?.visitor_id || email.split("@")[0]) : "",
+      platform: getPlatformLabel(normalizePlatformChannel(event.event_json?.clientChannel || event.event_json?.deviceCategory || event.module_id)),
+      visits: 0,
+      firstSeenAt: recordedAt,
+      lastSeenAt: recordedAt
+    };
+    current.visits += 1;
+    if (recordedAt && (!current.firstSeenAt || recordedAt < current.firstSeenAt)) current.firstSeenAt = recordedAt;
+    if (recordedAt && (!current.lastSeenAt || recordedAt > current.lastSeenAt)) current.lastSeenAt = recordedAt;
+    visitors.set(key, current);
+  });
+
+  return [...visitors.values()].sort((a, b) => new Date(b.lastSeenAt || 0).getTime() - new Date(a.lastSeenAt || 0).getTime());
 }
 
 function selectAll(table) {
@@ -319,7 +370,35 @@ function getActiveDuration(event) {
 }
 
 function isExcludedReportEmail(email) {
-  return excludedReportEmails.has(String(email || "").trim().toLowerCase());
+  return excludedReportEmails.has(normalizeEmail(email));
+}
+
+function isAnonymousVisitorEmail(email) {
+  return normalizeEmail(email).endsWith("@anonymous.intuisity");
+}
+
+function getVisitorKey(event) {
+  const email = normalizeEmail(event.email);
+  if (email) return email;
+  const visitorId = event.event_json?.visitorId || event.event_json?.visitor_id || "";
+  return visitorId ? `anonymous:${visitorId}` : "";
+}
+
+function normalizePlatformChannel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("app") || normalized.includes("reactnative")) return "app";
+  if (normalized.includes("mobile")) return "mobile-web";
+  return "desktop-web";
+}
+
+function getPlatformLabel(channel) {
+  if (channel === "app") return "App";
+  if (channel === "mobile-web") return "Mobile Web";
+  return "Desktop Web";
+}
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
 }
 
 function escapeCsvValue(value) {
