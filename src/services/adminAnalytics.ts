@@ -10,6 +10,8 @@ export type AnalyticsEvent = {
   date: string;
   clientChannel?: string;
   deviceCategory?: string;
+  userAgent?: string;
+  isLikelyBot?: boolean;
 };
 
 export type ModuleAnalyticsSummary = {
@@ -88,6 +90,7 @@ export type UserInsightReport = {
   currentCity?: string;
   currentState?: string;
   currentCountry?: string;
+  age?: number | null;
   birthChartType?: string;
   sunSign?: string;
   moonSign?: string;
@@ -187,7 +190,9 @@ export function markAnalyticsActivity() {
 
 export function loadAdminAnalyticsReport(startDate = "", endDate = ""): AdminAnalyticsReport {
   const allProfiles = loadProfiles().filter((profile) => !isExcludedReportEmail(String(profile.email || "")));
-  const allEvents = loadAnalyticsEvents().filter((event) => !isExcludedReportEmail(event.email));
+  const allEvents = loadAnalyticsEvents().filter(
+    (event) => !isExcludedReportEmail(event.email) && !isLikelyBotEvent(event)
+  );
   const dateRange = normalizeDateRange(startDate, endDate);
   const visitorEvents = buildLocalVisitorEvents(allEvents, allProfiles);
   const events = filterEventsByDateRange(allEvents, dateRange).filter((event) => !isVisitorOnlyEvent(event));
@@ -392,6 +397,7 @@ function buildLocalUserInsights(events: AnalyticsEvent[]): UserInsightReport[] {
       currentCity: profile.currentCity || "",
       currentState: profile.currentState || "",
       currentCountry: profile.currentCountry || "",
+      age: calculateAge(profile.birthdate),
       birthChartType: profile.birthChart?.calculationType || "",
       sunSign: profile.birthChart?.sunSign || "",
       moonSign: profile.birthChart?.moonSign || "",
@@ -411,6 +417,21 @@ function buildLocalUserInsights(events: AnalyticsEvent[]): UserInsightReport[] {
         : undefined
     };
   }).sort((a, b) => new Date(b.lastActiveAt || 0).getTime() - new Date(a.lastActiveAt || 0).getTime());
+}
+
+function calculateAge(birthdate: unknown, today = new Date()): number | null {
+  const text = String(birthdate || "").trim();
+  const match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/) || text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!match) return null;
+  const isoFormat = text.includes("-");
+  const year = Number(isoFormat ? match[1] : match[3]);
+  const month = Number(isoFormat ? match[2] : match[1]);
+  const day = Number(isoFormat ? match[3] : match[2]);
+  const parsed = new Date(year, month - 1, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day || parsed > today) return null;
+  let age = today.getFullYear() - year;
+  if (today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day)) age -= 1;
+  return age;
 }
 
 function isExcludedReportEmail(email: string) {
@@ -532,8 +553,18 @@ function getClientPlatformDetails() {
 
   return {
     clientChannel,
-    deviceCategory: getPlatformLabel(clientChannel)
+    deviceCategory: getPlatformLabel(clientChannel),
+    userAgent: userAgent.slice(0, 500),
+    isLikelyBot: Boolean(navigatorRef?.webdriver) || isLikelyBotUserAgent(userAgent)
   };
+}
+
+function isLikelyBotEvent(event: AnalyticsEvent) {
+  return event.isLikelyBot === true || isLikelyBotUserAgent(String(event.userAgent || ""));
+}
+
+function isLikelyBotUserAgent(userAgent: string) {
+  return /bot|crawler|spider|headless|slurp|bingpreview|facebookexternalhit|whatsapp|discordbot|telegrambot|lighthouse|pagespeed|google-inspectiontool|semrush|ahrefs|mj12bot|dotbot|petalbot|yandex|baidu|duckduckbot|applebot|uptimerobot|vercel-screenshot/i.test(userAgent);
 }
 
 function normalizePlatformChannel(value: string) {

@@ -80,6 +80,7 @@ type BackendAdminReport = {
     currentCity?: string;
     currentState?: string;
     currentCountry?: string;
+    age?: number | null;
     birthChartType?: string;
     sunSign?: string;
     moonSign?: string;
@@ -451,6 +452,12 @@ function getClientPlatformDetails() {
 
   return {
     clientChannel: appChannel ? "app" : mobileWeb ? "mobile-web" : "desktop-web",
-    deviceCategory: appChannel ? "App" : mobileWeb ? "Mobile Web" : "Desktop Web"
+    deviceCategory: appChannel ? "App" : mobileWeb ? "Mobile Web" : "Desktop Web",
+    userAgent: userAgent.slice(0, 500),
+    isLikelyBot: Boolean(navigatorRef?.webdriver) || isLikelyBotUserAgent(userAgent)
   };
+}
+
+function isLikelyBotUserAgent(userAgent: string) {
+  return /bot|crawler|spider|headless|slurp|bingpreview|facebookexternalhit|whatsapp|discordbot|telegrambot|lighthouse|pagespeed|google-inspectiontool|semrush|ahrefs|mj12bot|dotbot|petalbot|yandex|baidu|duckduckbot|applebot|uptimerobot|vercel-screenshot/i.test(userAgent);
 }

@@ -20,15 +20,20 @@ async function buildAdminReport(options = {}) {
     selectAll("friends")
   ]);
   const profiles = allProfiles.filter((profile) => !isExcludedReportEmail(profile.email));
-  const analyticsEvents = allAnalyticsEvents.filter((event) => !isExcludedReportEmail(event.email));
+  const analyticsEvents = allAnalyticsEvents.filter(
+    (event) => !isExcludedReportEmail(event.email) && !isLikelyBotEvent(event)
+  );
   const dailyResults = allDailyResults.filter((entry) => !isExcludedReportEmail(entry.email));
   const moduleFeedback = allModuleFeedback.filter((entry) => !isExcludedReportEmail(entry.email));
   const friends = allFriends.filter((entry) => !isExcludedReportEmail(entry.email));
 
   const dateRange = normalizeDateRange(options.startDate, options.endDate);
   const rangedAnalyticsEvents = filterEventsByDateRange(analyticsEvents, dateRange);
-  const volume = buildVisitorVolume(analyticsEvents, dateRange);
-  const visitorTrend = buildVisitorTrend(rangedAnalyticsEvents);
+  const visitorEvents = buildVisitorEvents(analyticsEvents, profiles);
+  const rangedVisitorEvents = filterEventsByDateRange(visitorEvents, dateRange);
+  const volume = buildVisitorVolume(visitorEvents, dateRange);
+  const visitorTrend = buildVisitorTrend(rangedVisitorEvents);
+  const platformBreakdown = buildPlatformBreakdown(rangedVisitorEvents);
   const moduleDailyTrend = buildModuleDailyTrend(rangedAnalyticsEvents);
 
   const moduleTotals = new Map();
@@ -58,14 +63,15 @@ async function buildAdminReport(options = {}) {
   const ratingTotal = ratings.reduce((total, entry) => total + Number(entry.rating || 0), 0);
   const userInsights = buildUserInsights({ analyticsEvents: rangedAnalyticsEvents, dailyResults, friends, moduleFeedback, profiles });
   const knownUserCount = countKnownUsers({ analyticsEvents, dailyResults, friends, moduleFeedback, profiles });
-  const visitorInsights = buildVisitorInsights(rangedAnalyticsEvents, profiles);
+  const visitorInsights = buildVisitorInsights(rangedVisitorEvents, profiles);
 
   return {
     totalUsers: knownUserCount,
     totalVisits: rangedAnalyticsEvents.length,
-    uniqueVisitors: countUniqueVisitors(rangedAnalyticsEvents),
+    uniqueVisitors: countUniqueVisitors(rangedVisitorEvents),
     visitorVolume: volume,
     visitorTrend,
+    platformBreakdown,
     moduleDailyTrend,
     dateRange,
     totalTimeMs,
@@ -90,6 +96,24 @@ async function buildAdminReport(options = {}) {
     userInsights,
     visitorInsights
   };
+}
+
+function buildVisitorEvents(analyticsEvents, profiles) {
+  const profileEvents = profiles
+    .filter((profile) => profile.email && !isExcludedReportEmail(profile.email) && !isAnonymousVisitorEmail(profile.email))
+    .map((profile) => ({
+      email: profile.email,
+      module_id: "profile-signup",
+      module_label: "Profile Signup",
+      started_at: profile.updated_at || new Date().toISOString(),
+      recorded_at: profile.updated_at || new Date().toISOString(),
+      date: getLocalDateKey(new Date(profile.updated_at || Date.now())),
+      duration_ms: 0,
+      active_duration_ms: 0,
+      event_json: { clientChannel: "desktop-web", deviceCategory: "Desktop Web", source: "profiles" }
+    }));
+
+  return [...analyticsEvents, ...profileEvents];
 }
 
 function buildModuleDailyTrend(events) {
@@ -125,6 +149,7 @@ async function buildUserInsightsCsv(options = {}) {
     "Current City",
     "Current State",
     "Current Country",
+    "Age",
     "Most Clicked Module",
     "Most Clicked Count",
     "Most Time Module",
@@ -152,6 +177,7 @@ async function buildUserInsightsCsv(options = {}) {
       row.currentCity,
       row.currentState,
       row.currentCountry,
+      row.age ?? "",
       row.mostClickedModule,
       row.mostClickedCount,
       row.mostTimeModule,
@@ -209,6 +235,7 @@ function buildUserInsights({ analyticsEvents, dailyResults, friends, moduleFeedb
       currentCity: profile.current_city || "",
       currentState: profile.current_state || "",
       currentCountry: profile.current_country || "",
+      age: calculateAge(profile.birthdate || profile.profile_json?.birthdate),
       totalClicks: events.length,
       totalTimeMs: events.reduce((sum, event) => sum + Number(event.duration_ms || 0), 0),
       totalActiveTimeMs: events.reduce((sum, event) => sum + getActiveDuration(event), 0),
@@ -234,6 +261,12 @@ function buildUserInsights({ analyticsEvents, dailyResults, friends, moduleFeedb
 
 function countKnownUsers(sources) {
   return collectKnownEmails(sources).length;
+}
+
+function isLikelyBotEvent(event) {
+  const payload = event?.event_json || {};
+  const userAgent = String(payload.userAgent || payload.user_agent || "");
+  return payload.isLikelyBot === true || /bot|crawler|spider|headless|slurp|bingpreview|facebookexternalhit|whatsapp|discordbot|telegrambot|lighthouse|pagespeed|google-inspectiontool|semrush|ahrefs|mj12bot|dotbot|petalbot|yandex|baidu|duckduckbot|applebot|uptimerobot|vercel-screenshot/i.test(userAgent);
 }
 
 function collectKnownEmails({ analyticsEvents = [], dailyResults = [], friends = [], moduleFeedback = [], profiles = [] }) {
@@ -303,8 +336,8 @@ function buildVisitorTrend(events) {
     const date = getEventDateKey(event);
     const current = dayMap.get(date) || { date, visitCount: 0, visitorEmails: new Set() };
     current.visitCount += 1;
-    const email = String(event.email || "").trim().toLowerCase();
-    if (email) current.visitorEmails.add(email);
+    const visitorKey = getVisitorKey(event);
+    if (visitorKey) current.visitorEmails.add(visitorKey);
     dayMap.set(date, current);
   });
 
@@ -318,8 +351,35 @@ function buildVisitorTrend(events) {
     }));
 }
 
+function buildPlatformBreakdown(events) {
+  const platformMap = new Map();
+
+  events.forEach((event) => {
+    const channel = normalizePlatformChannel(event.event_json?.clientChannel || event.event_json?.deviceCategory || event.module_id);
+    const current = platformMap.get(channel) || {
+      channel,
+      label: getPlatformLabel(channel),
+      visits: 0,
+      visitorEmails: new Set()
+    };
+    current.visits += 1;
+    const visitorKey = getVisitorKey(event);
+    if (visitorKey) current.visitorEmails.add(visitorKey);
+    platformMap.set(channel, current);
+  });
+
+  return ["desktop-web", "mobile-web", "app"]
+    .map((channel) => platformMap.get(channel) || { channel, label: getPlatformLabel(channel), visits: 0, visitorEmails: new Set() })
+    .map((entry) => ({
+      channel: entry.channel,
+      label: entry.label,
+      visits: entry.visits,
+      uniqueVisitors: entry.visitorEmails.size
+    }));
+}
+
 function countUniqueVisitors(events) {
-  return new Set(events.map((event) => String(event.email || "").trim().toLowerCase()).filter(Boolean)).size;
+  return new Set(events.map(getVisitorKey).filter(Boolean)).size;
 }
 
 function filterEventsSince(events, dateKey) {
@@ -399,6 +459,21 @@ function getPlatformLabel(channel) {
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function calculateAge(birthdate, today = new Date()) {
+  const text = String(birthdate || "").trim();
+  const match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/) || text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!match) return null;
+  const isoFormat = text.includes("-");
+  const year = Number(isoFormat ? match[1] : match[3]);
+  const month = Number(isoFormat ? match[2] : match[1]);
+  const day = Number(isoFormat ? match[3] : match[2]);
+  const parsed = new Date(year, month - 1, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day || parsed > today) return null;
+  let age = today.getFullYear() - year;
+  if (today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day)) age -= 1;
+  return age;
 }
 
 function escapeCsvValue(value) {

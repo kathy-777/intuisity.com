@@ -1476,6 +1476,21 @@ function AdminDashboard() {
   const moduleTrendLabels = Array.from(new Set(moduleTrendRows.flatMap((day) => day.modules.map((module) => module.moduleLabel))));
   const moduleTrendMax = Math.max(1, ...moduleTrendRows.flatMap((day) => day.modules.map((module) => module.activeMs || module.totalMs)));
   const moduleTrendColors = ["#7555C7", "#00AEBB", "#43C987", "#F4B740", "#B15A60", "#6544B8", "#706982"];
+  const reportedAges = (report.userInsights || [])
+    .map((user) => user.age)
+    .filter((age): age is number => typeof age === "number" && age >= 0);
+  const ageBreakdown = [
+    { label: "Under 18", minimum: 0, maximum: 17 },
+    { label: "18–24", minimum: 18, maximum: 24 },
+    { label: "25–34", minimum: 25, maximum: 34 },
+    { label: "35–44", minimum: 35, maximum: 44 },
+    { label: "45–54", minimum: 45, maximum: 54 },
+    { label: "55–64", minimum: 55, maximum: 64 },
+    { label: "65+", minimum: 65, maximum: Number.POSITIVE_INFINITY }
+  ].map((range) => ({
+    label: range.label,
+    count: reportedAges.filter((age) => age >= range.minimum && age <= range.maximum).length
+  }));
   const summaryMetrics = [
     { icon: "people-outline" as const, label: "Saved users", value: report.totalUsers },
     { icon: "pulse-outline" as const, label: "Tracked visits", value: report.totalVisits },
@@ -1526,6 +1541,9 @@ function AdminDashboard() {
         <Text style={styles.adminFeedbackMeta}>
           {[user.currentCity, user.currentState, user.currentCountry].filter(Boolean).join(", ") || "No current location saved"}
         </Text>
+        {typeof user.age === "number" && (
+          <Text style={styles.adminFeedbackMeta}>Age: {user.age}</Text>
+        )}
         {(user.sunSign || user.moonSign || user.risingSign) && (
           <Text style={styles.adminFeedbackMeta}>
             Chart: {[user.sunSign && `Sun ${user.sunSign}`, user.moonSign && `Moon ${user.moonSign}`, user.risingSign && `Rising ${user.risingSign}`].filter(Boolean).join(" · ")}
@@ -1860,11 +1878,12 @@ function AdminDashboard() {
       </View>
 
       <Text style={styles.adminSectionTitle}>Visitor volume</Text>
+      <Text style={styles.adminSectionHint}>Known bots and automated browsers are excluded. Older visits recorded before bot detection may remain.</Text>
       <View style={styles.adminVolumeGrid}>
-        <Metric icon="today-outline" label="Today" value={report.visitorVolume?.today || 0} />
-        <Metric icon="calendar-outline" label="Last 7 days" value={report.visitorVolume?.week || 0} />
-        <Metric icon="calendar-number-outline" label="Last 30 days" value={report.visitorVolume?.month || 0} />
-        <Metric icon="filter-outline" label="Selected range" value={report.visitorVolume?.range || report.uniqueVisitors || 0} />
+        <Metric icon="today-outline" label="Today" onPress={() => setAdminReportPage("unique-visitors")} value={report.visitorVolume?.today || 0} />
+        <Metric icon="calendar-outline" label="Last 7 days" onPress={() => setAdminReportPage("unique-visitors")} value={report.visitorVolume?.week || 0} />
+        <Metric icon="calendar-number-outline" label="Last 30 days" onPress={() => setAdminReportPage("unique-visitors")} value={report.visitorVolume?.month || 0} />
+        <Metric icon="filter-outline" label="Selected range" onPress={() => setAdminReportPage("unique-visitors")} value={report.visitorVolume?.range || report.uniqueVisitors || 0} />
       </View>
 
       <Text style={styles.adminSectionTitle}>Traffic by platform</Text>
@@ -1884,6 +1903,20 @@ function AdminDashboard() {
             <Text style={styles.metricLabel}>{platform.label}</Text>
             <Text style={styles.adminFeedbackMeta}>{platform.visits} visits</Text>
           </View>
+        ))}
+      </View>
+
+      <Text style={styles.adminSectionTitle}>Age insights</Text>
+      <Text style={styles.adminFeedbackMeta}>
+        Based on {reportedAges.length} {reportedAges.length === 1 ? "user" : "users"} who saved a birth date in the astrology area.
+      </Text>
+      <View style={styles.adminVolumeGrid}>
+        {ageBreakdown.map((range) => (
+          <Pressable key={range.label} onPress={() => setAdminReportPage("user-insights")} style={styles.adminPlatformCard}>
+            <Ionicons color="#7555C7" name="people-outline" size={24} />
+            <Text style={styles.metricValue}>{range.count}</Text>
+            <Text style={styles.metricLabel}>{range.label}</Text>
+          </Pressable>
         ))}
       </View>
       <View style={styles.adminDateRangeCard}>
@@ -2789,6 +2822,13 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginBottom: 10,
     marginTop: 6
+  },
+  adminSectionHint: {
+    color: "#6E6485",
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 10,
+    marginTop: -4
   },
   adminDateRangeCard: {
     backgroundColor: "#FFFFFF",

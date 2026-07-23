@@ -20,7 +20,9 @@ async function buildAdminReport(options = {}) {
     selectAll("friends")
   ]);
   const profiles = allProfiles.filter((profile) => !isExcludedReportEmail(profile.email));
-  const analyticsEvents = allAnalyticsEvents.filter((event) => !isExcludedReportEmail(event.email));
+  const analyticsEvents = allAnalyticsEvents.filter(
+    (event) => !isExcludedReportEmail(event.email) && !isLikelyBotEvent(event)
+  );
   const dailyResults = allDailyResults.filter((entry) => !isExcludedReportEmail(entry.email));
   const moduleFeedback = allModuleFeedback.filter((entry) => !isExcludedReportEmail(entry.email));
   const friends = allFriends.filter((entry) => !isExcludedReportEmail(entry.email));
@@ -146,6 +148,7 @@ async function buildUserInsightsCsv(options = {}) {
     "Current City",
     "Current State",
     "Current Country",
+    "Age",
     "Birth Chart Type",
     "Sun Sign",
     "Moon Sign",
@@ -178,6 +181,7 @@ async function buildUserInsightsCsv(options = {}) {
       row.currentCity,
       row.currentState,
       row.currentCountry,
+      row.age ?? "",
       row.birthChartType,
       row.sunSign,
       row.moonSign,
@@ -240,6 +244,7 @@ function buildUserInsights({ analyticsEvents, dailyResults, friends, moduleFeedb
       currentCity: profile.current_city || "",
       currentState: profile.current_state || "",
       currentCountry: profile.current_country || "",
+      age: calculateAge(profile.birthdate || profile.profile_json?.birthdate),
       birthChartType: profile.birth_chart_type || profile.birth_chart_json?.calculationType || "",
       sunSign: profile.sun_sign || profile.birth_chart_json?.sunSign || "",
       moonSign: profile.moon_sign || profile.birth_chart_json?.moonSign || "",
@@ -274,6 +279,12 @@ function selectAll(table) {
 
 function countKnownUsers(sources) {
   return collectKnownEmails(sources).length;
+}
+
+function isLikelyBotEvent(event) {
+  const payload = event?.event_json || {};
+  const userAgent = String(payload.userAgent || payload.user_agent || "");
+  return payload.isLikelyBot === true || /bot|crawler|spider|headless|slurp|bingpreview|facebookexternalhit|whatsapp|discordbot|telegrambot|lighthouse|pagespeed|google-inspectiontool|semrush|ahrefs|mj12bot|dotbot|petalbot|yandex|baidu|duckduckbot|applebot|uptimerobot|vercel-screenshot/i.test(userAgent);
 }
 
 function collectKnownEmails({ analyticsEvents = [], dailyResults = [], friends = [], moduleFeedback = [], profiles = [] }) {
@@ -436,6 +447,21 @@ function getPlatformLabel(channel) {
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function calculateAge(birthdate, today = new Date()) {
+  const text = String(birthdate || "").trim();
+  const match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/) || text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!match) return null;
+  const isoFormat = text.includes("-");
+  const year = Number(isoFormat ? match[1] : match[3]);
+  const month = Number(isoFormat ? match[2] : match[1]);
+  const day = Number(isoFormat ? match[3] : match[2]);
+  const parsed = new Date(year, month - 1, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day || parsed > today) return null;
+  let age = today.getFullYear() - year;
+  if (today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day)) age -= 1;
+  return age;
 }
 
 function escapeCsvValue(value) {
