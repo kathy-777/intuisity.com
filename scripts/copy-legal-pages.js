@@ -7,7 +7,9 @@ const legal = path.join(root, "legal");
 
 const pages = [
   { from: path.join(legal, "privacy.html"), to: path.join(dist, "privacy.html") },
-  { from: path.join(legal, "terms.html"), to: path.join(dist, "terms.html") }
+  { from: path.join(legal, "terms.html"), to: path.join(dist, "terms.html") },
+  { from: path.join(legal, "robots.txt"), to: path.join(dist, "robots.txt") },
+  { from: path.join(legal, "sitemap.xml"), to: path.join(dist, "sitemap.xml") }
 ];
 
 if (!fs.existsSync(dist)) {
