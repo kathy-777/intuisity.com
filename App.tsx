@@ -32,6 +32,7 @@ type TabKey = "today" | "remote" | "friends" | "premium" | "admin";
 type Answers = Record<string, string>;
 const profilesKey = "intuisity-user-profiles";
 const activeProfileKey = "intuisity-active-profile";
+const guestProfileKey = "intuisity-guest-profile";
 const dailyAnswersKeyPrefix = "intuisity-daily-answers";
 const supportedLanguages = [
   { code: "en", name: "English", nativeName: "English" },
@@ -134,6 +135,7 @@ export default function App() {
     return activeProfile ? loadDailyAnswers(activeProfile.email) : {};
   });
   const [subscriptionStatus, setSubscriptionStatus] = useState("Free");
+  const [accountGateNotice, setAccountGateNotice] = useState("");
   const userIsAdmin = isAdminUser(userProfile);
   const visibleTabs = useMemo(
     () => tabs.filter((tab) => tab.key !== "admin" || userIsAdmin),
@@ -205,7 +207,19 @@ export default function App() {
   }, [answers, userProfile?.email]);
 
   if (!userProfile) {
-    return <AccountAccess onAuthenticated={setUserProfile} />;
+    return (
+      <AccountAccess
+        initialNotice={accountGateNotice}
+        onAuthenticated={(profile) => {
+          setAccountGateNotice("");
+          setUserProfile(profile);
+        }}
+        onGuest={() => {
+          setAccountGateNotice("");
+          setUserProfile(loadOrCreateGuestProfile());
+        }}
+      />
+    );
   }
 
   const logout = () => {
@@ -291,6 +305,10 @@ export default function App() {
             friendChallengeRequestId={friendChallengeRequestId}
             isPremium={subscriptionStatus !== "Free"}
             onLogout={confirmLogout}
+            onRequireAccount={() => {
+              setAccountGateNotice("You completed your two free games. Create your free account to keep playing, save your scores and streak, and challenge friends.");
+              setUserProfile(null);
+            }}
             onUpdateProfile={(updatedProfile) => {
               saveProfile(updatedProfile);
               setUserProfile(updatedProfile);
@@ -335,7 +353,7 @@ export default function App() {
   );
 }
 
-function AccountAccess({ onAuthenticated }: { onAuthenticated: (profile: UserProfile) => void }) {
+function AccountAccess({ initialNotice = "", onAuthenticated, onGuest }: { initialNotice?: string; onAuthenticated: (profile: UserProfile) => void; onGuest: () => void }) {
   const savedProfiles = loadProfiles();
   const emptyProfile: UserProfile = {
     language: "en", email: "", phone: "", name: "", reminderTime: "9:00 AM", timeZone: detectTimeZone(), birthdate: "", birthTime: "", birthCity: "", birthState: "",
@@ -411,6 +429,7 @@ function AccountAccess({ onAuthenticated }: { onAuthenticated: (profile: UserPro
           <Ionicons color="#FFFFFF" name="person-add-outline" size={18} />
           <Text style={styles.primaryButtonText}>Create my account</Text>
         </Pressable>
+        {initialNotice ? <Text style={styles.accountGateNotice}>{initialNotice}</Text> : null}
         <GoogleSignInButton onPress={handleGoogleSignIn} />
         <Pressable
           onPress={() => {
@@ -423,6 +442,11 @@ function AccountAccess({ onAuthenticated }: { onAuthenticated: (profile: UserPro
         >
           <Text style={styles.accountSecondaryText}>I already have an account</Text>
         </Pressable>
+        {!initialNotice ? (
+          <Pressable onPress={onGuest} style={styles.accountSecondaryButton}>
+            <Text style={styles.accountSecondaryText}>Try two games before signing up</Text>
+          </Pressable>
+        ) : null}
         {error ? <Text style={styles.accountError}>{error}</Text> : null}
         <LegalLinks />
       </SafeAreaView>
@@ -968,6 +992,39 @@ function loadTreasureInviteGuestProfile(): UserProfile | null {
     reminderTime: "9:00 AM",
     timeZone: detectTimeZone()
   };
+}
+
+function loadOrCreateGuestProfile(): UserProfile {
+  try {
+    const stored = globalThis.localStorage?.getItem(guestProfileKey);
+    if (stored) return normalizeLoadedProfile(JSON.parse(stored));
+  } catch {
+    // Create a fresh guest below if saved browser data is unavailable.
+  }
+
+  const profile: UserProfile = {
+    authProvider: "guest",
+    birthCity: "",
+    birthCountry: "",
+    birthState: "",
+    birthTime: "",
+    birthdate: "",
+    currentCity: "",
+    currentCountry: detectLocaleCountry(),
+    currentState: "",
+    email: `guest-${Date.now()}@anonymous.intuisity`,
+    language: "en",
+    name: "Guest Player",
+    phone: "",
+    reminderTime: "9:00 AM",
+    timeZone: detectTimeZone()
+  };
+  try {
+    globalThis.localStorage?.setItem(guestProfileKey, JSON.stringify(profile));
+  } catch {
+    // Guest play still works when browser storage is blocked.
+  }
+  return profile;
 }
 
 function saveProfile(profile: UserProfile) {
@@ -2259,6 +2316,7 @@ const styles = StyleSheet.create({
   reminderNoticeTimeZone: { color: "#008A94", fontSize: 11, fontWeight: "900", lineHeight: 16, marginTop: 4 },
   reminderTimeInput: { backgroundColor: "#FFFFFF", borderColor: "#BFE8E8", borderRadius: 8, borderWidth: 1, color: "#30264C", fontSize: 15, fontWeight: "800", marginTop: 8, maxWidth: 150, paddingHorizontal: 12, paddingVertical: 9 },
   accountError: { color: "#B34B56", fontSize: 13, fontWeight: "700", marginBottom: 12 },
+  accountGateNotice: { backgroundColor: "#FFF7DE", borderColor: "#E8CC74", borderRadius: 10, borderWidth: 1, color: "#51431C", fontSize: 13, fontWeight: "800", lineHeight: 19, marginBottom: 14, padding: 12, textAlign: "center" },
   accountHint: { color: "#706982", fontSize: 12, fontWeight: "700", marginBottom: 10, marginTop: -4 },
   passwordRules: { backgroundColor: "#F8F7FC", borderColor: "#DCCFF5", borderRadius: 8, borderWidth: 1, marginBottom: 12, marginTop: -2, padding: 10 },
   passwordRulesTitle: { color: "#30264C", fontSize: 13, fontWeight: "900", marginBottom: 7 },

@@ -80,6 +80,7 @@ type Props = {
   homeRequestId?: number;
   isPremium: boolean;
   onLogout: () => void;
+  onRequireAccount: () => void;
   onUpdateProfile: (profile: UserProfile) => void;
   setAnswers: React.Dispatch<React.SetStateAction<Answers>>;
   userProfile: UserProfile;
@@ -516,7 +517,7 @@ const personImages: Record<string, any> = {
   mei: require("../../assets/person-mei.png")
 };
 
-export function DailyChallengeHub({ answers, friendChallengeRequestId = 0, homeRequestId = 0, isPremium, onLogout, onUpdateProfile, setAnswers, userProfile }: Props) {
+export function DailyChallengeHub({ answers, friendChallengeRequestId = 0, homeRequestId = 0, isPremium, onLogout, onRequireAccount, onUpdateProfile, setAnswers, userProfile }: Props) {
   const savedPersonChallengeRef = useRef(loadTodaysPersonChallenge(userProfile.email));
   const savedPersonChallenge = savedPersonChallengeRef.current;
   const savedPersonProfile = savedPersonChallenge
@@ -827,6 +828,18 @@ export function DailyChallengeHub({ answers, friendChallengeRequestId = 0, homeR
       return;
     }
     setPage(nextPage);
+  };
+
+  const openChallenge = (challengeId: string) => {
+    if (userProfile.authProvider === "guest" && getCompletedGuestPlayCount(answers) >= 2) {
+      onRequireAccount();
+      return;
+    }
+    if (challengeId === "daily-intuition") {
+      resetKnowing();
+    } else {
+      navigateToPage(challengeId);
+    }
   };
 
   const addFriendPhone = () => {
@@ -3677,6 +3690,17 @@ export function DailyChallengeHub({ answers, friendChallengeRequestId = 0, homeR
         title="Choose a challenge"
         subtitle="Explore awareness, synchronicity, inner knowing, astrological insights, remote viewing, and manifestation through daily intuition practice."
       />
+      {userProfile.authProvider === "guest" ? (
+        <View style={styles.guestPlayNotice}>
+          <Ionicons color="#008A94" name="gift-outline" size={20} />
+          <View style={styles.guestPlayNoticeCopy}>
+            <Text style={styles.guestPlayNoticeTitle}>Try Intuisity before signing up</Text>
+            <Text style={styles.guestPlayNoticeText}>
+              {Math.max(0, 2 - getCompletedGuestPlayCount(answers))} of 2 free games remaining. Create a free account afterward to keep playing and save your progress.
+            </Text>
+          </View>
+        </View>
+      ) : null}
       <View style={styles.hero}>
         <Image
           accessibilityLabel="Intuisity banner with a sunlit forest stream"
@@ -3690,11 +3714,7 @@ export function DailyChallengeHub({ answers, friendChallengeRequestId = 0, homeR
               accessibilityLabel={`Open ${challenge.title} from banner`}
               key={`banner-${challenge.id}`}
               onPress={() => {
-                if (challenge.id === "daily-intuition") {
-                  resetKnowing();
-                } else {
-                  navigateToPage(challenge.id);
-                }
+                openChallenge(challenge.id);
               }}
               style={({ pressed }) => [
                 styles.bannerIconLink,
@@ -3710,11 +3730,7 @@ export function DailyChallengeHub({ answers, friendChallengeRequestId = 0, homeR
             <Pressable
               accessibilityLabel={`Open ${challenge.title}`}
               onPress={() => {
-                if (challenge.id === "daily-intuition") {
-                  resetKnowing();
-                } else {
-                  navigateToPage(challenge.id);
-                }
+                openChallenge(challenge.id);
               }}
               style={[styles.moduleIconButton, styles.moduleIconButtonPurple]}
             >
@@ -4370,6 +4386,19 @@ function hashString(value: string) {
 function calculateModulePoints(score: number, maximum: number, possiblePoints: number) {
   if (!maximum) return 0;
   return Math.round((score / maximum) * possiblePoints);
+}
+
+function getCompletedGuestPlayCount(answers: Answers) {
+  return [
+    answers["social-prediction"] === "Completed",
+    Object.prototype.hasOwnProperty.call(answers, "knowing-score"),
+    answers["remote-viewing-arena"] === "Completed" ||
+      Object.prototype.hasOwnProperty.call(answers, "learning-commitment-score") ||
+      Object.prototype.hasOwnProperty.call(answers, "learning-followup-score"),
+    Object.prototype.hasOwnProperty.call(answers, "person-score"),
+    answers["psychic-potential-score"] === "Completed",
+    Object.prototype.hasOwnProperty.call(answers, "remote-viewing-score")
+  ].filter(Boolean).length;
 }
 
 async function resolveWikipediaPortrait(title: string): Promise<string | null> {
@@ -5199,6 +5228,10 @@ const styles = StyleSheet.create({
   eyebrow: { color: "#7555C7", fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
   title: { color: "#201B35", fontSize: 28, fontWeight: "900", marginTop: 6 },
   subtitle: { color: "#706982", fontSize: 15, lineHeight: 22, marginTop: 8 },
+  guestPlayNotice: { alignItems: "center", backgroundColor: "#EDFBFB", borderColor: "#BFE8E8", borderRadius: 10, borderWidth: 1, flexDirection: "row", gap: 10, marginBottom: 14, padding: 12 },
+  guestPlayNoticeCopy: { flex: 1 },
+  guestPlayNoticeText: { color: "#4F6270", fontSize: 12, lineHeight: 17, marginTop: 2 },
+  guestPlayNoticeTitle: { color: "#007982", fontSize: 14, fontWeight: "900" },
   hero: { aspectRatio: 2.4, backgroundColor: "#F4F0E7", borderRadius: 8, marginBottom: 16, overflow: "hidden", width: "100%" },
   heroImage: { height: "100%", left: 0, position: "absolute", width: "100%" },
   bannerIconLinks: { bottom: "2%", flexDirection: "row", height: "27%", left: "1%", position: "absolute", width: "47%" },
