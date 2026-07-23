@@ -12,9 +12,9 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kathy777.intuisitymvp",
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+      "bundleIdentifier": "com.intuisity.app",
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "android": {
